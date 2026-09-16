@@ -1,4 +1,4 @@
-# Real-Time MQTT Dashboard: Architecture and Design Specification
+# RV Control Web: Architecture and Design Specification
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@
 
 ## 1. Overview
 
-The MQTT Live Dashboard is a web application that renders live telemetry
+The RV Control Web is a web application that renders live telemetry
 published to an MQTT broker. A Python backend owns one set of MQTT
 subscriptions, caches the latest value for every topic, and streams updates to
 browsers over WebSocket. A Svelte frontend renders a configurable, responsive
