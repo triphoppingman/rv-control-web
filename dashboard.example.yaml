@@ -1,0 +1,29 @@
+app:
+  title: RV Control
+tabs:
+  - id: power
+    label: Power
+    root:
+      type: grid
+      cols: 12
+      children:
+        - type: card
+          title: House battery
+          span: 6
+          children:
+            - type: gauge
+              label: State of charge
+              topic: rv/renogy
+              payload_path: battery_percentage
+              unit: "%"
+              min: 0
+              max: 100
+        - type: card
+          title: Solar input
+          span: 6
+          children:
+            - type: numeric
+              label: PV power
+              topic: rv/renogy
+              payload_path: pv_power
+              unit: W

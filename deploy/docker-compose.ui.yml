@@ -1,0 +1,13 @@
+services:
+  ui:
+    image: ${RV_WEB_IMAGE:?Set RV_WEB_IMAGE}
+    platform: linux/arm64
+    ports:
+      - "${RV_WEB_BIND:-127.0.0.1}:8000:8000"
+    environment:
+      RV_WEB_CONFIG: /config/config.yaml
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ${RV_WEB_CONFIG_DIR:?Set RV_WEB_CONFIG_DIR}:/config:ro
+    restart: unless-stopped

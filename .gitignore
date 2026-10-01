@@ -1,0 +1,17 @@
+frontend/node_modules/
+frontend/dist/
+backend/.venv/
+__pycache__/
+*.pyc
+config.yaml
+dashboard.yaml
+**/.env*
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+deploy/acme/
+assets/*
+!assets/README.md

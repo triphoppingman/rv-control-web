@@ -1,0 +1,20 @@
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: ":443"
+providers:
+  docker:
+    exposedByDefault: false
+certificatesResolvers:
+  le:
+    acme:
+      email: ops@example.com
+      storage: /letsencrypt/acme.json
+      dnsChallenge:
+        provider: cloudflare

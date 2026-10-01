@@ -1,0 +1,1 @@
+Place locally served dashboard images in this directory. Reference them by relative filename in `dashboard.yaml`.

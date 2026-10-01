@@ -24,8 +24,9 @@
 20. [Repository Structure](#20-repository-structure)
 21. [Build Plan and Milestones](#21-build-plan-and-milestones)
 22. [Acceptance Criteria](#22-acceptance-criteria)
-23. [Appendix A: Backend Model Sketches](#appendix-a-backend-model-sketches)
-24. [Appendix B: Frontend Type Sketches](#appendix-b-frontend-type-sketches)
+23. [Copilot Implementation Guidance](#23-copilot-implementation-guidance)
+24. [Appendix A: Backend Model Sketches](#appendix-a-backend-model-sketches)
+25. [Appendix B: Frontend Type Sketches](#appendix-b-frontend-type-sketches)
 
 ## 1. Overview
 
@@ -137,6 +138,7 @@ assuming that similarly named sources have identical schemas.
 | D9 | TLS is terminated by Traefik using Let's Encrypt DNS-01. | No inbound port 80 or 443 is required for certificate validation. |
 | D10 | RV-Control integration is MQTT-only. | No shared Python package, configuration file, API, filesystem path, or process dependency is required. |
 | D11 | No payload versioning is used in the first release. | The subscriber consumes the documented JSON fields directly; schema version negotiation is deferred. |
+| D12 | The backend is Python and the frontend is Svelte. | Implement server-side logic in Python and the browser UI in Svelte. |
 
 ## 5. Requirements
 
@@ -685,6 +687,11 @@ Mount configuration, dashboard YAML, assets, Traefik configuration, and
 persistent `acme.json`. Inject DNS-provider credentials through an untracked
 environment file or secret; never commit them.
 
+Provide one Bash script, `deploy/docker-image.sh`, as the sole entry point for
+Docker image build, tag, and push operations. It must support both interactive
+user use and non-interactive machine use through explicit arguments; do not
+duplicate these commands in separate deployment scripts or CI steps.
+
 Deploying a new `dashboard.yaml` requires restarting the backend so topic
 subscriptions are re-derived. Commit `config.example.yaml` and
 `dashboard.example.yaml`, but never environment-specific secrets.
@@ -767,6 +774,7 @@ mqtt-live-dashboard/
   frontend/
   deploy/
     docker-compose.yml
+    docker-image.sh       # Build, tag, and push entry point for users and CI
     traefik/traefik.yml
     acme/acme.json       # Gitignored; mode 600
     .env.example         # DNS provider variables only
@@ -811,6 +819,19 @@ mqtt-live-dashboard/
   cache and update the dashboard without requiring retained messages.
 - **AC-11:** Traefik obtains a DNS-01 certificate, redirects HTTP to HTTPS, and
   successfully proxies WebSocket connections.
+
+## 23. Copilot Implementation Guidance
+
+- Stay pragmatic: make the smallest justified change and avoid speculative
+  edge cases, repeated analysis, or unnecessary process.
+- Conserve tokens: read only relevant context and keep updates and explanations
+  concise.
+- Validate proportionately: run focused checks for changed behavior, but do
+  not repeat tests or run unrelated suites without a concrete reason.
+- Leave Git operations, including staging, commits, branches, Git tags, and
+  pushes, to the user. Do not perform them on the user's behalf.
+- Route Docker image builds, tags, and pushes through `deploy/docker-image.sh`
+  for both people and automation; never invoke those operations independently.
 
 ## Appendix A: Backend Model Sketches
 

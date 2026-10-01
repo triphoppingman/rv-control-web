@@ -1,0 +1,36 @@
+services:
+  traefik:
+    image: traefik:v3
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CF_DNS_API_TOKEN: ${CF_DNS_API_TOKEN:?Set CF_DNS_API_TOKEN}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./acme:/letsencrypt
+    restart: unless-stopped
+  backend:
+    image: ${RV_WEB_IMAGE:?Set RV_WEB_IMAGE}
+    platform: linux/arm64
+    environment:
+      RV_WEB_CONFIG: /config/config.yaml
+    volumes:
+      - ${RV_WEB_CONFIG_DIR:?Set RV_WEB_CONFIG_DIR}:/config:ro
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.rv-web.rule=Host(`${RV_WEB_DOMAIN:?Set RV_WEB_DOMAIN}`)
+      - traefik.http.routers.rv-web.entrypoints=websecure
+      - traefik.http.routers.rv-web.tls.certresolver=le
+      - traefik.http.services.rv-web.loadbalancer.server.port=8000
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "127.0.0.1:1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
