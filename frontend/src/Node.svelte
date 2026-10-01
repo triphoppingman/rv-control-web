@@ -61,7 +61,7 @@
   {:else if node.type === 'text'}
     <div class="text {node.variant || 'body'}" style="--span:{node.span || 12}">{node.content}</div>
   {:else if node.type === 'image'}
-    <img class="static-image" src="/assets/{node.src}" alt={node.alt || ''} style="height:{node.height || 'auto'}; object-fit:{node.fit || 'contain'}; --span:{node.span || 12}" />
+    <img class="static-image" src="/dashboard-assets/{node.src}" alt={node.alt || ''} style="height:{node.height || 'auto'}; object-fit:{node.fit || 'contain'}; --span:{node.span || 12}" />
   {:else if node.type === 'divider'}
     <hr class="divider" style="--span:{node.span || 12}" />
   {:else if node.type === 'spacer'}

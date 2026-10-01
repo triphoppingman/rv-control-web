@@ -127,7 +127,8 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(lifespan=lifespan)
-app.mount("/assets", StaticFiles(directory=assets_dir, check_dir=False), name="assets")
+# Keep user media separate from Vite's frontend bundle, which also uses /assets.
+app.mount("/dashboard-assets", StaticFiles(directory=assets_dir, check_dir=False), name="dashboard-assets")
 
 
 @app.get("/api/config")
