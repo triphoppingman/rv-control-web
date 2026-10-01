@@ -13,7 +13,7 @@ services:
     restart: unless-stopped
   backend:
     image: ${RV_WEB_IMAGE:?Set RV_WEB_IMAGE}
-    platform: linux/arm64
+    platform: ${RV_WEB_PLATFORM:-linux/arm64}
     environment:
       RV_WEB_CONFIG: /config/config.yaml
     volumes:

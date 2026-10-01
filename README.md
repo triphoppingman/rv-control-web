@@ -28,8 +28,9 @@ with no-data readings and `/healthz` reports a degraded connection. Run
 
 ## Docker deployment
 
-The image targets 64-bit Raspberry Pi OS (`linux/arm64`). Build on the Pi, or
-use a builder with ARM64 emulation configured when building on another host.
+The default target is 64-bit Raspberry Pi OS (`linux/arm64`). Set
+`RV_WEB_PLATFORM=linux/amd64` for an Intel/AMD host. Building for a different
+architecture than the build machine requires emulation or a remote builder.
 All image operations use the same script for people and CI:
 
 ```sh
@@ -37,6 +38,18 @@ bash deploy/docker-image.sh build rv-control-web:local
 bash deploy/docker-image.sh tag rv-control-web:local docker.io/triphoop/rv-control-web:1
 bash deploy/docker-image.sh push docker.io/triphoop/rv-control-web:1
 ```
+
+For an AMD64 image, set the platform when building and use a distinct tag:
+
+```sh
+RV_WEB_PLATFORM=linux/amd64 bash deploy/docker-image.sh build docker.io/triphoop/rv-control-web:1-amd64
+```
+
+Set `RV_WEB_PLATFORM=linux/amd64` and
+`RV_WEB_IMAGE=docker.io/triphoop/rv-control-web:1-amd64` in `deploy/.env` when
+deploying that image. Both Compose files use `RV_WEB_PLATFORM` (defaulting to
+`linux/arm64`); the build script reads it from the environment, not from
+`deploy/.env` automatically.
 
 Authenticate with `docker login --username triphoop` before pushing; enter
 credentials interactively and never store them in tracked files.

@@ -7,7 +7,7 @@ import os
 import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any, AsyncGenerator
 
 import aiomqtt
 import yaml
@@ -112,7 +112,7 @@ async def flush_updates() -> None:
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     """Start and stop the broker listener and broadcast ticker."""
     tasks = [asyncio.create_task(receive_mqtt()), asyncio.create_task(flush_updates())]
     try:

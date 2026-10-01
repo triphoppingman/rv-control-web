@@ -1,7 +1,7 @@
 services:
   ui:
     image: ${RV_WEB_IMAGE:?Set RV_WEB_IMAGE}
-    platform: linux/arm64
+    platform: ${RV_WEB_PLATFORM:-linux/arm64}
     ports:
       - "${RV_WEB_BIND:-127.0.0.1}:8000:8000"
     environment:
