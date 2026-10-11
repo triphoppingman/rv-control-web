@@ -170,6 +170,28 @@ RV_WEB_PLATFORM=linux/arm64 bash deploy/docker-image.sh build docker.io/triphoop
 The ARM64 command on an AMD64 host still requires an ARM64-capable builder;
 the script does not install emulation.
 
+To control a local UI container without Docker Compose, build the image with
+`deploy/docker-image.sh`, then point `RV_WEB_CONFIG_DIR` at a directory containing
+`config.yaml`, `dashboard.yaml`, `auth-users.yaml`, and `assets/`:
+
+```sh
+bash deploy/docker-image.sh build
+RV_WEB_CONFIG_DIR="$HOME/rv-control-web-config" bash deploy/docker-ui.sh start
+bash deploy/docker-ui.sh status
+bash deploy/docker-ui.sh stop
+```
+
+The control script binds to `127.0.0.1:8000` by default. Set `RV_WEB_BIND` or
+`RV_WEB_PORT` to change the host binding. The config directory is mounted
+read-only. Dashboard image sources remain relative to `assets/` and are served
+under the protected `/assets/` route; `/ui-assets/` serves the compiled frontend.
+Configure accounts and matching browser origins using the
+[authentication guide](docs/authentication.md). Changing `RV_WEB_PORT` also
+requires changing the allowed origin. The helper starts an existing container
+with its original settings; changed image, bind, or mount settings require
+deliberate container recreation. Production uses
+[Docker Compose with HTTPS](docs/deployment.md), not this local helper.
+
 Set `RV_WEB_PLATFORM=linux/amd64` and
 `RV_WEB_IMAGE=docker.io/triphoop/rv-control-web:1-amd64` in `deploy/.env` when
 deploying that image. Both Compose files use `RV_WEB_PLATFORM` (defaulting to
