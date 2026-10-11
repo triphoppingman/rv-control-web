@@ -18,6 +18,24 @@ tabs:
               unit: "%"
               min: 0
               max: 100
+            - type: sparkline
+              label: State of charge trend
+              topic: rv/renogy
+              payload_path: battery_percentage
+              unit: "%"
+              min: 0
+              max: 100
+              history_points: 120
+              sample_interval_ms: 1000
+            - type: derived
+              label: PV-to-battery voltage delta
+              operation: difference
+              unit: V
+              inputs:
+                - topic: rv/renogy
+                  payload_path: pv_voltage
+                - topic: rv/renogy
+                  payload_path: battery_voltage
         - type: card
           title: Solar input
           span: 6
@@ -27,3 +45,51 @@ tabs:
               topic: rv/renogy
               payload_path: pv_power
               unit: W
+  - id: shore
+    label: Shore Power
+    root:
+      type: grid
+      cols: 12
+      children:
+        - type: card
+          title: Shore supply
+          span: 6
+          children:
+            - type: gauge
+              label: Line voltage
+              topic: rv/hughes
+              payload_path: voltage
+              unit: V
+              min: 0
+              max: 150
+              decimals: 1
+            - type: numeric
+              label: Current
+              topic: rv/hughes
+              payload_path: current
+              unit: A
+              decimals: 2
+            - type: sparkline
+              label: Power trend
+              topic: rv/hughes
+              payload_path: power
+              unit: W
+              min: 0
+              max: 1000
+              history_points: 120
+              sample_interval_ms: 2000
+        - type: card
+          title: Protection and usage
+          span: 6
+          children:
+            - type: numeric
+              label: Error code
+              topic: rv/hughes
+              payload_path: error_code
+              decimals: 0
+            - type: numeric
+              label: Energy
+              topic: rv/hughes
+              payload_path: energy
+              unit: kWh
+              decimals: 3

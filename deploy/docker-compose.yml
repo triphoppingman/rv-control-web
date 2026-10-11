@@ -16,6 +16,8 @@ services:
     platform: ${RV_WEB_PLATFORM:-linux/arm64}
     environment:
       RV_WEB_CONFIG: /config/config.yaml
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       - ${RV_WEB_CONFIG_DIR:?Set RV_WEB_CONFIG_DIR}:/config:ro
     labels:
@@ -24,13 +26,4 @@ services:
       - traefik.http.routers.rv-web.entrypoints=websecure
       - traefik.http.routers.rv-web.tls.certresolver=le
       - traefik.http.services.rv-web.loadbalancer.server.port=8000
-    depends_on:
-      - mosquitto
-    restart: unless-stopped
-  mosquitto:
-    image: eclipse-mosquitto:2
-    ports:
-      - "127.0.0.1:1883:1883"
-    volumes:
-      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     restart: unless-stopped

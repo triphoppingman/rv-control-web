@@ -11,10 +11,15 @@ from typing import Any, AsyncGenerator
 
 import aiomqtt
 import yaml
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+from starlette.requests import HTTPConnection
+from starlette.types import ASGIApp, Receive, Scope, Send
 
+from .auth import Auth, COOKIE_NAME, SESSION_SECONDS
 from .dashboard import load_dashboard
 
 
@@ -32,6 +37,10 @@ if tick_hz <= 0:
     raise ValueError("stream.tick_hz must be positive")
 logging.basicConfig(level=settings.get("log_level", "INFO"))
 logger = logging.getLogger(__name__)
+auth = Auth(settings.get("auth"), CONFIG_PATH.parent)
+if not auth.enabled:
+    logger.warning("Authentication explicitly disabled: use only for local testing")
+password_slots = asyncio.Semaphore(2)
 values: dict[str, dict[str, Any]] = {}
 clients: set["Viewer"] = set()
 mqtt_connected = False
@@ -40,17 +49,25 @@ mqtt_connected = False
 class Viewer:
     """Track the active tab and conflated pending updates for one browser."""
 
-    def __init__(self, socket: WebSocket) -> None:
+    def __init__(self, socket: WebSocket, token: str | None = None) -> None:
         """Initialize a disconnected viewer."""
         self.socket = socket
         self.tab: str | None = None
         self.pending: dict[str, dict[str, Any]] = {}
         self.send_lock = asyncio.Lock()
+        self.token = token
 
     async def send(self, message: dict[str, Any]) -> None:
         """Serialize WebSocket sends from snapshot and ticker paths."""
         async with self.send_lock:
+            if auth.enabled and auth.session(self.token) is None:
+                await self.socket.close(code=4401)
+                raise WebSocketDisconnect(code=4401)
             await self.socket.send_json(message)
+
+    async def close(self) -> None:
+        async with self.send_lock:
+            await self.socket.close(code=4401)
 
 
 async def receive_mqtt() -> None:
@@ -102,12 +119,20 @@ async def flush_updates() -> None:
     while True:
         await asyncio.sleep(1 / tick_hz)
         for viewer in tuple(clients):
+            if auth.enabled and auth.session(viewer.token) is None:
+                clients.discard(viewer)
+                try:
+                    await viewer.close()
+                except (WebSocketDisconnect, RuntimeError):
+                    logger.debug("Expired viewer already disconnected")
+                continue
             if viewer.pending:
                 pending = list(viewer.pending.values())
                 viewer.pending.clear()
                 try:
                     await viewer.send({"type": "update", "values": pending})
-                except Exception:
+                except (WebSocketDisconnect, RuntimeError, OSError) as exc:
+                    logger.info("Viewer send failed: %s", exc)
                     clients.discard(viewer)
 
 
@@ -124,10 +149,114 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
             with suppress(asyncio.CancelledError):
                 await task
         clients.clear()
+        auth.sessions.clear()
 
 
-app = FastAPI(lifespan=lifespan)
+class AuthMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        async def no_cache(message: Any) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                headers = [(key, value) for key, value in headers if key.lower() != b"cache-control"]
+                headers.append((b"cache-control", b"no-store"))
+                message["headers"] = headers
+            await send(message)
+
+        if auth.enabled and scope["type"] in {"http", "websocket"}:
+            request = HTTPConnection(scope)
+            path = scope["path"]
+            if scope["type"] == "websocket":
+                if request.headers.get("origin") not in auth.origins or auth.session(
+                    request.cookies.get(COOKIE_NAME)
+                ) is None:
+                    await send({"type": "websocket.close", "code": 4401})
+                    return
+            elif (
+                path == "/healthz" or path == "/assets" or path.startswith("/assets/")
+                or path == "/api" or path.startswith("/api/")
+            ) and path not in {"/api/auth/session", "/api/auth/login", "/api/auth/logout"}:
+                if auth.session(request.cookies.get(COOKIE_NAME)) is None:
+                    await JSONResponse(
+                        {"detail": "Authentication required"}, status_code=401,
+                        headers={"Cache-Control": "no-store"},
+                    )(scope, receive, send)
+                    return
+        await self.app(scope, receive, no_cache if scope["type"] == "http" else send)
+
+
+app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+app.add_middleware(AuthMiddleware)
 app.mount("/assets", StaticFiles(directory=assets_dir, check_dir=False), name="assets")
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(_request: Request, _error: RequestValidationError) -> JSONResponse:
+    return JSONResponse({"detail": "Invalid request"}, status_code=422,
+                        headers={"Cache-Control": "no-store"})
+
+
+class Login(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=1024)
+
+
+def check_origin(request: Request) -> None:
+    if auth.enabled and request.headers.get("origin") not in auth.origins:
+        raise HTTPException(status_code=403, detail="Request origin not allowed")
+
+
+@app.get("/api/auth/session")
+async def get_session(request: Request) -> JSONResponse:
+    session = auth.session(request.cookies.get(COOKIE_NAME))
+    return JSONResponse({
+        "enabled": auth.enabled,
+        "authenticated": not auth.enabled or session is not None,
+        "username": session.username if session else None,
+    }, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/auth/login")
+async def login(credentials: Login, request: Request) -> JSONResponse:
+    check_origin(request)
+    if not auth.enabled:
+        raise HTTPException(status_code=409, detail="Authentication is disabled")
+    address = request.client.host if request.client else "unknown"
+    if not auth.allow_attempt(address):
+        raise HTTPException(status_code=429, detail="Too many login attempts; try again in a minute",
+                            headers={"Retry-After": "60"})
+    async with password_slots:
+        valid = await asyncio.to_thread(auth.authenticate, credentials.username, credentials.password)
+    if not valid:
+        logger.warning("Login failed from %s", address)
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    auth.revoke(request.cookies.get(COOKIE_NAME))
+    token = auth.create_session(credentials.username)
+    response = JSONResponse({"authenticated": True, "username": credentials.username},
+                            headers={"Cache-Control": "no-store"})
+    response.set_cookie(COOKIE_NAME, token, max_age=SESSION_SECONDS, httponly=True,
+                        secure=auth.secure_cookie, samesite="strict", path="/")
+    return response
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request) -> Response:
+    check_origin(request)
+    token = request.cookies.get(COOKIE_NAME)
+    auth.revoke(token)
+    for viewer in tuple(clients):
+        if token is not None and viewer.token == token:
+            clients.discard(viewer)
+            try:
+                await viewer.close()
+            except (WebSocketDisconnect, RuntimeError):
+                logger.debug("Logged-out viewer already disconnected")
+    response = Response(status_code=204, headers={"Cache-Control": "no-store"})
+    response.delete_cookie(COOKIE_NAME, path="/", secure=auth.secure_cookie,
+                           httponly=True, samesite="strict")
+    return response
 
 
 @app.get("/api/config")
@@ -147,10 +276,13 @@ async def health() -> dict[str, Any]:
 async def websocket(socket: WebSocket) -> None:
     """Deliver snapshots and active-tab updates to a browser."""
     await socket.accept()
-    viewer = Viewer(socket)
+    viewer = Viewer(socket, socket.cookies.get(COOKIE_NAME))
     clients.add(viewer)
     try:
         while True:
+            if auth.enabled and auth.session(viewer.token) is None:
+                await viewer.close()
+                break
             try:
                 message = await socket.receive_json()
             except ValueError:

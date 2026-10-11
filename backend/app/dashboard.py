@@ -1,5 +1,6 @@
 """Load dashboard YAML and derive topic subscriptions."""
 
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,18 @@ DashboardLoader.add_implicit_resolver(
 
 CONTAINERS = {"grid", "row", "column", "stack", "card"}
 BOUND = {"gauge", "dial", "numeric", "boolean", "sparkline"}
+DERIVED_OPERATIONS = {"sum", "difference", "product", "ratio", "average"}
 STATIC = {"text", "image", "icon", "divider", "spacer"}
+
+
+def is_finite_number(value: Any) -> bool:
+    """Return whether a value is a finite JSON-compatible number."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 def load_dashboard(path: Path, assets_dir: Path) -> tuple[dict[str, Any], dict[str, set[str]]]:
@@ -53,7 +65,7 @@ def validate_node(
     if not isinstance(node, dict):
         raise ValueError(f"{location}: expected a node")
     kind = node.get("type")
-    if kind not in CONTAINERS | BOUND | STATIC:
+    if not isinstance(kind, str) or kind not in CONTAINERS | BOUND | {"derived"} | STATIC:
         raise ValueError(f"{location}: unknown type {kind!r}")
     node_id = node.get("id")
     if node_id is not None:
@@ -71,9 +83,46 @@ def validate_node(
         for field in ("topic", "payload_path"):
             if not isinstance(node.get(field), str) or not node[field].strip():
                 raise ValueError(f"{location}: {field} is required")
-        if kind in {"gauge", "dial", "sparkline"} and not node.get("min", 0) < node.get("max", 100):
-            raise ValueError(f"{location}: min must be less than max")
+        if kind in {"gauge", "dial", "sparkline"}:
+            minimum = node.get("min", 0)
+            maximum = node.get("max", 100)
+            if (
+                not is_finite_number(minimum)
+                or not is_finite_number(maximum)
+                or minimum >= maximum
+            ):
+                raise ValueError(f"{location}: min and max must be finite numbers with min < max")
+        if kind == "sparkline":
+            history_points = node.get("history_points", 60)
+            if isinstance(history_points, bool) or not isinstance(history_points, int) or not 2 <= history_points <= 1000:
+                raise ValueError(f"{location}: history_points must be an integer from 2 to 1000")
+            sample_interval_ms = node.get("sample_interval_ms", 1000)
+            if (
+                isinstance(sample_interval_ms, bool)
+                or not isinstance(sample_interval_ms, int)
+                or not 0 <= sample_interval_ms <= 60000
+            ):
+                raise ValueError(f"{location}: sample_interval_ms must be an integer from 0 to 60000")
         topics.add(node["topic"])
+    elif kind == "derived":
+        if "topic" in node or "payload_path" in node:
+            raise ValueError(f"{location}: derived widgets use inputs, not topic or payload_path")
+        operation = node.get("operation")
+        if not isinstance(operation, str) or operation not in DERIVED_OPERATIONS:
+            raise ValueError(f"{location}: operation must be one of {', '.join(sorted(DERIVED_OPERATIONS))}")
+        inputs = node.get("inputs")
+        if not isinstance(inputs, list) or len(inputs) < 2:
+            raise ValueError(f"{location}: inputs must contain at least two bindings")
+        if operation in {"difference", "ratio"} and len(inputs) != 2:
+            raise ValueError(f"{location}: {operation} requires exactly two inputs")
+        for index, binding in enumerate(inputs):
+            input_location = f"{location}.inputs[{index}]"
+            if not isinstance(binding, dict):
+                raise ValueError(f"{input_location}: expected a binding")
+            for field in ("topic", "payload_path"):
+                if not isinstance(binding.get(field), str) or not binding[field].strip():
+                    raise ValueError(f"{input_location}: {field} is required")
+            topics.add(binding["topic"])
     else:
         if "topic" in node or "payload_path" in node:
             raise ValueError(f"{location}: static widgets cannot bind to a topic")

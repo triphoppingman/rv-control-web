@@ -12,6 +12,7 @@ dashboard.yaml
 *.p12
 *.pfx
 secrets/
+auth-users.yaml
 deploy/acme/
 assets/*
 !assets/README.md

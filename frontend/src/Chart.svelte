@@ -12,6 +12,9 @@
   export let min = 0;
   export let max = 100;
   export let color = '#147d73';
+  export let historyPoints = 60;
+  export let sampleIntervalMs = 1000;
+  export let timestamp = null;
 
   let element;
   let chart;
@@ -19,15 +22,18 @@
 
   // Sparkline points live only for this mounted widget; tab changes discard them.
   $: if (chart) {
-    if (type === 'sparkline' && typeof value === 'number') {
-      history = [...history.slice(-59), value];
+    if (type === 'sparkline' && Number.isFinite(value) && Number.isFinite(timestamp)) {
+      const last = history[history.length - 1];
+      if (!last || (timestamp > last.ts && timestamp - last.ts >= sampleIntervalMs)) {
+        history = [...history.slice(-(historyPoints - 1)), { ts: timestamp, value }];
+      }
     }
     chart.setOption(type === 'sparkline' ? {
       animation: false,
       grid: { left: 2, right: 2, top: 5, bottom: 5 },
       xAxis: { type: 'category', show: false, data: history.map((_, index) => index) },
       yAxis: { type: 'value', show: false, min, max },
-      series: [{ type: 'line', data: history, symbol: 'none', smooth: true,
+      series: [{ type: 'line', data: history.map((point) => point.value), symbol: 'none', smooth: true,
         lineStyle: { color, width: 2 }, areaStyle: { color, opacity: 0.12 } }],
     } : {
       series: [{ type: 'gauge', min, max, startAngle: type === 'dial' ? 210 : 180,

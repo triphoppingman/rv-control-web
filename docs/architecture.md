@@ -1,5 +1,10 @@
 # RV Control Web: Architecture and Design Specification
 
+For current feature configuration and operational test instructions, see
+[Dashboard features and local MQTT testing](dashboard-testing.md). The
+architecture includes planned module sketches; the testing guide describes
+the implemented workflow and its present limitations.
+
 ## Table of Contents
 
 1. [Overview](#1-overview)
@@ -163,6 +168,10 @@ assuming that similarly named sources have identical schemas.
 - **FR-12:** Reconnect automatically after WebSocket loss and resubscribe.
 - **FR-13:** Show stale and no-data states for bound widgets.
 - **FR-14:** Support nested grid, row, column, stack, and card containers.
+- **FR-15:** Check dashboard bindings against a supplied sample payload for each
+  configured MQTT topic.
+- **FR-16:** Render read-only derived numeric values from multiple MQTT bindings.
+- **FR-17:** Bound sparkline history and sampling according to widget settings.
 
 ### 5.2 Non-Functional Requirements
 
@@ -214,10 +223,12 @@ Per-client data path:
 
 ```text
 backend/
+  tests/
   app/
     main.py             # ASGI app, HTTP routes, WebSocket, static files
     settings.py         # Runtime configuration and validation
     dashboard.py        # Dashboard YAML, models, and topic derivation
+    check_dashboard.py  # Sample-payload binding checker
     mqtt_gateway.py     # One MQTT client, subscriptions, and message loop
     cache.py             # LastValueCache: topic -> payload, raw, timestamp
     hub.py               # Client registry, buffers, and fan-out ticker
@@ -498,6 +509,8 @@ A node is a discriminated union on `type` with three families:
 Common fields are `type`, optional `id`, `span`, `min_width`, `visible`, and
 `class`. Container types are `grid`, `row`, `column`, `stack`, and `card`.
 Bound widget types are `gauge`, `dial`, `numeric`, `boolean`, and `sparkline`.
+Derived widget type is `derived`; it reads multiple numeric bindings and does
+not introduce a publish path.
 Static types are `text`, `image`, `icon`, `divider`, and `spacer`.
 
 Validation rules:
@@ -506,10 +519,41 @@ Validation rules:
 - Bound widgets require a non-empty `topic` and `payload_path`.
 - Static widgets must not contain `topic` or `payload_path`.
 - Gauges, dials, and sparklines require `min < max`.
+- Sparklines accept `history_points` (2-1000, default 60) and
+  `sample_interval_ms` (0-60000, default 1000).
+- Derived widgets accept `sum`, `difference`, `product`, `ratio`, or `average`.
+  Every operation needs at least two numeric inputs; `difference` and `ratio`
+  require exactly two.
 - Image sources must resolve below `assets_dir`; absolute and external URLs are
   rejected.
 - Tab IDs must be unique. Node IDs should be unique within the dashboard.
 - Errors identify the tab and node path that failed validation.
+
+Check configured bindings against captured payloads before deployment:
+
+```sh
+backend/.venv/bin/python -m backend.app.check_dashboard \
+  --config config.yaml --samples /path/to/sample-payloads.json
+```
+
+The sample file is a JSON object keyed by complete MQTT topic. Each value is
+the payload object captured from that topic:
+
+```json
+{
+  "rv/renogy": {
+    "battery_percentage": 87,
+    "battery_voltage": 13.4
+  }
+}
+```
+
+The checker requires exactly the dashboard's topic set, resolves dotted paths
+and array indices like the frontend, and verifies that numeric widgets and
+derived inputs resolve to finite numbers. It reports the failing dashboard
+node path for missing or incorrectly typed values. Keep captured samples
+outside version control if they contain sensitive or installation-specific
+data.
 
 ## 10. Data Binding and Payload Extraction
 
@@ -530,6 +574,36 @@ requires strict equality, such as `on_when: RUNNING`.
 
 - **No-data:** no cached topic value exists or the path is undefined.
 - **Stale:** the last value exists, but `now - ts` exceeds `stale_after_ms`.
+- **Derived:** list each input as a `{topic, payload_path}` binding and select
+  an arithmetic `operation`. All inputs must be present and numeric. Missing
+  inputs show no-data, stale inputs mark the result stale, and non-numeric
+  inputs or a non-finite result (including division by zero) show invalid input.
+  For example, a Hughes 50 A payload may expose both line powers:
+
+```yaml
+type: derived
+label: Combined shore power
+operation: sum
+unit: W
+inputs:
+  - topic: rv/hughes
+    payload_path: power_line_1
+  - topic: rv/hughes
+    payload_path: power_line_2
+```
+
+The example applies only when those fields exist in the selected device's
+payload. All distinct input topics are subscribed through the normal
+tab-scoped MQTT flow.
+
+Sparklines keep their rolling points in the browser only. `history_points`
+sets the maximum number of points; `sample_interval_ms` sets the minimum time
+between accepted MQTT readings. A value of `0` accepts every distinct reading.
+For example, 120 points sampled no more often than once per second represent
+about two minutes when messages arrive regularly. History is discarded when
+the widget is remounted or the page is refreshed; no history database is used.
+Points use an evenly spaced index axis, not a time-proportional axis. Reconnect
+on the same mounted tab does not explicitly clear history.
 
 ## 11. WebSocket Protocol
 
@@ -651,15 +725,16 @@ reported by `/healthz`.
 Only bound widgets read the topic store. Static widgets render only from config.
 Only the active tab root is mounted, so hidden tabs incur no rendering cost.
 
-Gauges and dials use ECharts and resize through `ResizeObserver`. Numeric and
-boolean widgets apply formatting, thresholds, and stale/no-data styles. An
-optional sparkline keeps a client-side rolling buffer that resets on tab switch
-or reconnect. Static content must never be rendered as raw HTML.
+Gauges and dials use ECharts and resize through `ResizeObserver`. Numeric,
+boolean, and derived widgets apply formatting and stale/no-data styles.
+Sparklines keep only their configured rolling point count in the browser.
+Static content must never be rendered as raw HTML.
 
 ## 14. Widget Catalog
 
 - **Containers:** `grid`, `row`, `column`, `stack`, `card`
-- **Bound widgets:** `gauge`, `dial`, `numeric`, `boolean`, `sparkline`
+- **Bound widgets:** `gauge`, `dial`, `numeric`, `boolean`, `sparkline`,
+  `derived`
 - **Static widgets:** `text`, `image`, `icon`, `divider`, `spacer`
 
 ## 15. Responsive and Layout Model
@@ -691,10 +766,31 @@ Provide one Bash script, `deploy/docker-image.sh`, as the sole entry point for
 Docker image build, tag, and push operations. It must support both interactive
 user use and non-interactive machine use through explicit arguments; do not
 duplicate these commands in separate deployment scripts or CI steps.
+For `build` and `push`, an omitted image argument defaults to
+`docker.io/triphoop/rv-control-web:latest`; explicit image arguments override
+that default. Builds use Docker's native/default platform unless
+`RV_WEB_PLATFORM` is explicitly set. Cross-architecture builds require
+emulation or a suitable remote builder; the script does not configure either.
+`tag` requires explicit source and destination arguments.
 
 Deploying a new `dashboard.yaml` requires restarting the backend so topic
 subscriptions are re-derived. Commit `config.example.yaml` and
 `dashboard.example.yaml`, but never environment-specific secrets.
+
+For local testing without physical devices, `deploy/docker-compose.test.yml`
+runs an isolated Mosquitto broker bound to localhost. The separate
+`backend.app.fake_mqtt` development tool reads a YAML scenario such as
+`fake-mqtt.example.yaml` and selects only topics referenced by a dashboard.
+It validates configured payload paths, supports static fields plus
+time-based sine, ramp, and sequence generators, and allows per-topic publish
+intervals, QoS, and retention. `config.test.yaml` selects the example dashboard;
+`--dashboard-config` can select another dashboard without changing the test
+broker connection. This test publisher is not part of the application or UI,
+does not use RV-Control code or configuration, and must not connect to a
+production broker. The example test dashboard includes Power (`rv/renogy`)
+and Shore Power (`rv/hughes`). See the
+[testing guide](dashboard-testing.md) for commands, scenario settings, sample
+validation differences, and restart behavior.
 
 DNS-01 proves domain control by creating an `_acme-challenge` TXT record through
 the DNS provider API. It supports wildcard certificates and does not require
@@ -734,9 +830,13 @@ special Traefik configuration.
 
 ## 17. Security Considerations
 
-- Authentication is intentionally out of scope for the initial implementation.
-  The UI, `/api`, and `/ws` are unauthenticated and should remain on a trusted
-  network until a future authentication design is implemented.
+- Viewer authentication supports one to three externally configured accounts
+  with salted password hashes and identical read-only access. In-memory
+  sessions expire after eight hours and are revoked on logout or restart.
+  Protected API, widget assets, health details, and WebSockets require a
+  session; login/logout and WebSocket connections also check allowed origins.
+  See [authentication setup](authentication.md) for configuration and limits.
+  Anonymous access must be explicitly enabled only for local testing.
 - Use HTTPS and WSS in the browser; Traefik redirects HTTP to HTTPS.
 - Keep DNS credentials out of source control and protect `acme.json`.
 - Treat MQTT payloads as untrusted. Parse safely, validate numeric values, and
@@ -760,10 +860,9 @@ fan-out. That is outside the scope of v1.
 
 - Write and control widgets with command/ack messages, authorization, allow-lists,
   QoS 1 publishing, and auditing.
-- Authentication and per-user dashboards.
+- Per-user dashboards and role-based authorization.
 - Short-term server-side history or a time-series store.
 - In-app layout editing with editable configuration.
-- Derived widgets computed from multiple topics.
 - SIGHUP-based dashboard hot reload.
 
 ## 20. Repository Structure
@@ -798,7 +897,8 @@ mqtt-live-dashboard/
   indicator, reconnect polish, and viewport verification.
 - **M6, deployment:** Compose, Traefik, DNS-01 certificates, static and asset
   serving, example configuration, and operational documentation.
-- **M7, future:** Write path and authentication.
+- **M7, viewer login:** External accounts, sessions, and authenticated access.
+- **M8, future:** Write path and role-based authorization.
 
 ## 22. Acceptance Criteria
 

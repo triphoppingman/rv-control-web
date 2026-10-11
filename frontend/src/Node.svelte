@@ -22,16 +22,49 @@
     }) : String(value);
   }
 
+  function calculateDerived(node) {
+    const readings = node.inputs.map((input) => {
+      const record = values[input.topic];
+      const value = extract(record?.payload, input.payload_path);
+      return {
+        value,
+        missing: value === undefined || value === null,
+        stale: !!record && now - record.ts * 1000 > (node.stale_after_ms ?? staleAfter),
+      };
+    });
+    const missing = readings.some((reading) => reading.missing);
+    const stale = readings.some((reading) => reading.stale);
+    const invalid = readings.some((reading) => !reading.missing
+      && (typeof reading.value !== 'number' || !Number.isFinite(reading.value)));
+    if (missing || invalid) return { value: null, missing, stale, invalid };
+
+    const inputs = readings.map((reading) => reading.value);
+    let value;
+    switch (node.operation) {
+      case 'sum': value = inputs.reduce((total, input) => total + input, 0); break;
+      case 'difference': value = inputs[0] - inputs[1]; break;
+      case 'product': value = inputs.reduce((total, input) => total * input, 1); break;
+      case 'ratio': value = inputs[0] / inputs[1]; break;
+      case 'average': value = inputs.reduce((total, input) => total + input, 0) / inputs.length; break;
+      default: return { value: null, missing, stale, invalid: true };
+    }
+    return Number.isFinite(value)
+      ? { value, missing, stale, invalid: false }
+      : { value: null, missing, stale, invalid: true };
+  }
+
   // Svelte recomputes these states as telemetry or the shared clock changes.
   $: record = values[node.topic];
-  $: value = extract(record?.payload, node.payload_path);
-  $: missing = value === undefined || value === null;
-  $: stale = !missing && now - record.ts * 1000 > (node.stale_after_ms ?? staleAfter);
+  $: derived = node.type === 'derived' ? calculateDerived(node) : null;
+  $: value = node.type === 'derived' ? derived.value : extract(record?.payload, node.payload_path);
+  $: missing = node.type === 'derived' ? derived.missing : value === undefined || value === null;
+  $: stale = node.type === 'derived' ? derived.stale : !missing && now - record.ts * 1000 > (node.stale_after_ms ?? staleAfter);
+  $: invalid = node.type === 'derived' && derived.invalid;
   // The highest threshold at or below the reading determines its color.
   $: active = node.thresholds?.filter((threshold) => Number(value) >= threshold.at)
     .sort((left, right) => right.at - left.at)[0];
   $: accent = palette[active?.color] || active?.color || '#147d73';
-  $: state = missing ? 'No data' : stale ? 'Stale' : 'Live';
+  $: state = missing ? 'No data' : invalid ? 'Invalid input' : stale ? 'Stale' : 'Live';
 </script>
 
 {#if node.visible !== false}
@@ -44,18 +77,20 @@
         <svelte:self node={child} {values} {now} {staleAfter} />
       {/each}
     </div>
-  {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline'].includes(node.type)}
+  {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline', 'derived'].includes(node.type)}
     <div class="widget {node.type}" class:stale style="--accent:{accent}; --span:{node.span || 12}; --min-width:{node.min_width || 'auto'}">
-      <div class="widget-top"><span class="widget-label">{node.label || node.payload_path}</span><span class="state" class:offline={missing || stale}>{state}</span></div>
+      <div class="widget-top"><span class="widget-label">{node.label || node.payload_path || node.operation}</span><span class="state" class:offline={missing || stale || invalid}>{state}</span></div>
       {#if node.type === 'boolean'}
         <div class="boolean-value" class:on={!missing && (node.on_when === undefined ? !!value : value === node.on_when)}>
           <span class="indicator"></span>{missing ? '--' : (node.on_when === undefined ? !!value : value === node.on_when) ? (node.true_label || 'On') : (node.false_label || 'Off')}
         </div>
       {:else}
         {#if ['gauge', 'dial', 'sparkline'].includes(node.type)}
-          <Chart type={node.type} value={missing ? null : Number(value)} min={node.min ?? 0} max={node.max ?? 100} color={accent} />
+          <Chart type={node.type} value={missing ? null : Number(value)} min={node.min ?? 0} max={node.max ?? 100} color={accent}
+            historyPoints={node.history_points ?? 60} sampleIntervalMs={node.sample_interval_ms ?? 1000}
+            timestamp={record?.ts == null ? null : record.ts * 1000} />
         {/if}
-        <div class="reading">{missing ? '--' : format(value, node.decimals)}{#if node.unit}<small>{node.unit}</small>{/if}</div>
+        <div class="reading">{missing || invalid ? '--' : format(value, node.decimals)}{#if node.unit}<small>{node.unit}</small>{/if}</div>
       {/if}
     </div>
   {:else if node.type === 'text'}

@@ -55,5 +55,11 @@ h1 { font-size: clamp(26px, 3vw, 38px); font-weight: 600; }
 .divider { border: 0; border-top: 1px solid #e0e9e4; width: 100%; }
 .error { margin-top: 24px; padding: 14px; border-left: 3px solid #c6534b; background: #fff; color: #a53f36; }
 .loading { color: #647f73; }
+.account-actions { display: flex; align-items: center; gap: 14px; font-size: 12px; }
+.account-actions button { cursor: pointer; padding: 7px 12px; border: 1px solid #80b3a1; background: transparent; color: #fff; border-radius: 4px; }
+.login-panel { max-width: 480px; padding-top: 60px; }
+.login-panel input { width: 100%; padding: 12px; font: inherit; border: 1px solid #9ab4a9; border-radius: 4px; }
+.login-panel button { cursor: pointer; padding: 12px; background: #147d73; color: #fff; border: 0; border-radius: 4px; font-weight: 700; }
+button:disabled { cursor: wait; opacity: 0.6; }
 @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid > * { grid-column: span min(var(--span), 2); } }
 @media (max-width: 600px) { .grid { grid-template-columns: minmax(0, 1fr); } .grid > * { grid-column: 1; } .masthead { min-height: 66px; } .connection { font-size: 0; } .connection-dot { width: 10px; height: 10px; } .page-heading { margin-bottom: 20px; } .card { padding: 18px; } }

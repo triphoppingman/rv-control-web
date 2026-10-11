@@ -1,0 +1,38 @@
+# Only topics referenced by the selected dashboard are published.
+interval_s: 1
+topics:
+  rv/renogy:
+    payload:
+      battery_percentage: {generator: sine, min: 64, max: 80, period_s: 120, decimals: 1}
+      battery_voltage: {generator: sine, min: 12.9, max: 13.5, period_s: 60, decimals: 2}
+      battery_current: {generator: sine, min: 2, max: 12, period_s: 40, decimals: 2}
+      pv_voltage: {generator: sine, min: 18, max: 20, period_s: 60, decimals: 2}
+      pv_current: {generator: sine, min: 5, max: 25, period_s: 90, decimals: 2}
+      pv_power: {generator: sine, min: 100, max: 540, period_s: 90, decimals: 1}
+      load_power: {generator: sequence, values: [80, 120, 240, 100], hold_s: 15}
+      controller_temperature: {generator: sine, min: 74, max: 80, period_s: 120, decimals: 1}
+      charging_status: {generator: sequence, values: [charging, idle], hold_s: 30}
+      __device: Demo solar controller
+      __client: FakeTelemetry
+  rv/hughes:
+    interval_s: 2
+    qos: 0
+    retain: true
+    payload:
+      line: L1
+      voltage: {generator: sine, min: 118, max: 122, period_s: 60, decimals: 1}
+      current: {generator: sine, min: 3.5, max: 6.5, period_s: 40, decimals: 2}
+      power: {generator: sine, min: 420, max: 780, period_s: 40, decimals: 1}
+      power_line_1: {generator: sine, min: 420, max: 780, period_s: 40, decimals: 1}
+      power_line_2: {generator: sine, min: 300, max: 500, period_s: 60, decimals: 1}
+      energy: {generator: ramp, min: 0, max: 10, period_s: 3600, decimals: 3}
+      error_code: 0
+  rv/wled/patio:
+    payload:
+      on: {generator: sequence, values: [true, false], hold_s: 30}
+      bri: {generator: sine, min: 28, max: 228, period_s: 60, decimals: 0}
+      transition: 7
+      seg:
+        - id: 0
+          on: true
+          bri: 128

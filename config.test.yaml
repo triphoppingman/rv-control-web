@@ -1,0 +1,14 @@
+server:
+  host: 127.0.0.1
+  port: 8000
+auth:
+  enabled: false
+mqtt:
+  host: 127.0.0.1
+  port: 1883
+  client_id: rv-web-test-dashboard
+stream:
+  tick_hz: 12
+  stale_after_ms: 10000
+dashboard_file: ./dashboard.example.yaml
+assets_dir: ./assets
