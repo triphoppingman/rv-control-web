@@ -49,10 +49,19 @@ def iter_nodes(node: dict[str, Any], location: str):
 
 
 def iter_bindings(node: dict[str, Any]):
-    """Yield topic/path bindings for regular and derived widgets."""
+    """Yield topic/path bindings for regular, derived, and map widgets."""
     if node.get("type") == "derived":
         for binding in node["inputs"]:
             yield binding["topic"], binding["payload_path"], True
+    elif node.get("type") == "map":
+        topic = node["topic"]
+        lat_path = node.get("lat_path", "lat")
+        lon_path = node.get("lon_path", "lon")
+        yield topic, lat_path, True
+        yield topic, lon_path, True
+        for opt_field in ("track_path", "alt_path", "speed_path", "mode_path"):
+            if opt_field in node:
+                yield topic, node[opt_field], True
     elif node.get("type") in BOUND:
         yield node["topic"], node["payload_path"], node["type"] in NUMERIC_WIDGETS
 

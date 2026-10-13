@@ -511,12 +511,18 @@ Common fields are `type`, optional `id`, `span`, `min_width`, `visible`, and
 Bound widget types are `gauge`, `dial`, `numeric`, `boolean`, and `sparkline`.
 Derived widget type is `derived`; it reads multiple numeric bindings and does
 not introduce a publish path.
+Map widget type is `map`; it centers on latitude and longitude coordinates from an MQTT
+telemetry topic (such as `rv/gpsd/TPV`) with optional heading, altitude, speed, and zoom controls.
 Static types are `text`, `image`, `icon`, `divider`, and `spacer`.
 
 Validation rules:
 
 - `type` must be known.
 - Bound widgets require a non-empty `topic` and `payload_path`.
+- Map widgets require a non-empty `topic`, validate optional payload paths (`lat_path`,
+  `lon_path`, `track_path`, `alt_path`, `speed_path`, `mode_path`), and validate `zoom`
+  (1-20), `orientation` (`north_up` or `heading_up`), `altitude_unit` (`ft` or `m`), and
+  `speed_unit` (`mph`, `km/h`, or `kt`).
 - Static widgets must not contain `topic` or `payload_path`.
 - Gauges, dials, and sparklines require `min < max`.
 - Sparklines accept `history_points` (2-1000, default 60) and
@@ -595,6 +601,13 @@ inputs:
 The example applies only when those fields exist in the selected device's
 payload. All distinct input topics are subscribed through the normal
 tab-scoped MQTT flow.
+
+Map widgets center a slippy map on the vehicle's live coordinates (`lat_path` and `lon_path`,
+defaulting to `lat` and `lon`). The vehicle position is represented by an arrow icon in the center.
+In `north_up` mode, the marker rotates to indicate the heading angle; in `heading_up` mode, the map
+view rotates so the heading is always facing upward. The map includes an optional heads-up display (HUD)
+showing heading degrees and cardinal compass direction, altitude, speed, and GPS fix state. Standard
+zoom buttons (+/-) allow adjusting the map scale.
 
 Sparklines keep their rolling points in the browser only. `history_points`
 sets the maximum number of points; `sample_interval_ms` sets the minimum time

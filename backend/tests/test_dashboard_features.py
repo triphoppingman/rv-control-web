@@ -231,6 +231,83 @@ class DashboardFeatureTests(unittest.TestCase):
             self.assertEqual(result, 0)
             self.assertIn("1 bindings, 1 topics checked", output.getvalue())
 
+    def test_map_widget_validation_and_subscription(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            dashboard_path = root / "dashboard.yaml"
+            dashboard_path.write_text(
+                yaml.safe_dump(
+                    {
+                        "tabs": [
+                            {
+                                "id": "nav",
+                                "root": {
+                                    "type": "map",
+                                    "topic": "rv/gpsd/TPV",
+                                    "zoom": 15,
+                                    "orientation": "north_up",
+                                    "altitude_unit": "ft",
+                                    "speed_unit": "mph",
+                                },
+                            }
+                        ]
+                    }
+                )
+            )
+            dashboard, tab_topics = load_dashboard(dashboard_path, root / "assets")
+            self.assertEqual(tab_topics, {"nav": {"rv/gpsd/TPV"}})
+            self.assertEqual(dashboard["tabs"][0]["root"]["type"], "map")
+
+    def test_map_widget_invalid_settings_rejected(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            dashboard_path = root / "dashboard.yaml"
+            for invalid_node, expected in (
+                ({"type": "map"}, "topic is required"),
+                ({"type": "map", "topic": "rv/gpsd", "zoom": 25}, "zoom must be a number between 1 and 20"),
+                ({"type": "map", "topic": "rv/gpsd", "orientation": "bad"}, "orientation must be one of"),
+                ({"type": "map", "topic": "rv/gpsd", "altitude_unit": "yard"}, "altitude_unit must be one of"),
+                ({"type": "map", "topic": "rv/gpsd", "speed_unit": "furlong"}, "speed_unit must be one of"),
+            ):
+                dashboard_path.write_text(
+                    yaml.safe_dump({"tabs": [{"id": "nav", "root": invalid_node}]})
+                )
+                with self.subTest(expected=expected), self.assertRaisesRegex(ValueError, expected):
+                    load_dashboard(dashboard_path, root / "assets")
+
+    def test_map_widget_sample_validation(self) -> None:
+        dashboard = {
+            "tabs": [
+                {
+                    "id": "nav",
+                    "root": {
+                        "type": "map",
+                        "topic": "rv/gpsd/TPV",
+                    },
+                }
+            ]
+        }
+        valid_samples = {
+            "rv/gpsd/TPV": {
+                "lat": 37.7749,
+                "lon": -122.4194,
+                "track": 90.0,
+                "alt": 150.0,
+                "speed": 25.0,
+            }
+        }
+        self.assertEqual(validate_samples(dashboard, valid_samples, {"rv/gpsd/TPV"}), [])
+
+        invalid_samples = {
+            "rv/gpsd/TPV": {
+                "lat": "not_a_number",
+                "lon": -122.4194,
+            }
+        }
+        errors = validate_samples(dashboard, invalid_samples, {"rv/gpsd/TPV"})
+        self.assertEqual(len(errors), 1)
+        self.assertIn("must resolve to a finite number", errors[0])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,6 @@
 <script>
   import Chart from './Chart.svelte';
+  import Map from './Map.svelte';
 
   // The same component recurses through layout containers and renders leaf widgets.
   export let node;
@@ -93,6 +94,8 @@
         <div class="reading">{missing || invalid ? '--' : format(value, node.decimals)}{#if node.unit}<small>{node.unit}</small>{/if}</div>
       {/if}
     </div>
+  {:else if node.type === 'map'}
+    <Map {node} {values} {now} {staleAfter} />
   {:else if node.type === 'text'}
     <div class="text {node.variant || 'body'}" style="--span:{node.span || 12}">{node.content}</div>
   {:else if node.type === 'image'}

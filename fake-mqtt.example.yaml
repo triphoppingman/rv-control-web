@@ -36,3 +36,26 @@ topics:
         - id: 0
           on: true
           bri: 128
+  rv/gpsd/TPV:
+    interval_s: 1
+    payload:
+      class: TPV
+      mode: 3
+      lat: {generator: sine, min: 37.7740, max: 37.7760, period_s: 120, decimals: 6}
+      lon: {generator: sine, min: -122.4205, max: -122.4185, period_s: 120, decimals: 6}
+      track: {generator: ramp, min: 0, max: 360, period_s: 120, decimals: 1}
+      alt: {generator: sine, min: 100, max: 120, period_s: 60, decimals: 1}
+      speed: {generator: sine, min: 10, max: 25, period_s: 30, decimals: 1}
+  rv/obd_engine:
+    interval_s: 1
+    payload:
+      rpm: {generator: sine, min: 1200, max: 2600, period_s: 40, decimals: 0}
+      speed: {generator: sine, min: 25, max: 65, period_s: 60, decimals: 0}
+      load: {generator: sine, min: 20, max: 70, period_s: 30, decimals: 1}
+      coolant_temp: {generator: sine, min: 185, max: 210, period_s: 90, decimals: 1}
+      egt11: {generator: sine, min: 650, max: 850, period_s: 50, decimals: 1}
+      tft: {generator: sine, min: 160, max: 195, period_s: 100, decimals: 1}
+      boost: {generator: sine, min: 2, max: 24, period_s: 30, decimals: 1}
+      fuel: {generator: ramp, min: 40, max: 60, period_s: 1800, decimals: 1}
+
+

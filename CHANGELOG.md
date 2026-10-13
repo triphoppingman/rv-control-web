@@ -7,6 +7,11 @@ Changes below are unreleased; no release version or Git tag has been assigned.
 
 ### Added
 
+- Full-screen/tab-occupying map widget centered on live GPS coordinates
+  from an MQTT telemetry topic (such as `rv/gpsd/TPV`), supporting optional
+  heading/compass direction, altitude, speed, GPS fix quality indicators,
+  zoom controls, and orientation modes (`north_up` or `heading_up`).
+- Dedicated GPS dashboard tab displaying the map widget across the entire tab view.
 - Viewer login for one to three externally configured accounts with identical
   read-only access, salted scrypt password hashes, and a Logout button.
 - Eight-hour, in-memory sessions using random HttpOnly, SameSite=Strict

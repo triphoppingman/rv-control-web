@@ -10,5 +10,5 @@ mqtt:
 stream:
   tick_hz: 12
   stale_after_ms: 10000
-dashboard_file: ./dashboard.example.yaml
+dashboard_file: ./dashboard.yaml
 assets_dir: ./assets

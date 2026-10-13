@@ -25,6 +25,9 @@ CONTAINERS = {"grid", "row", "column", "stack", "card"}
 BOUND = {"gauge", "dial", "numeric", "boolean", "sparkline"}
 DERIVED_OPERATIONS = {"sum", "difference", "product", "ratio", "average"}
 STATIC = {"text", "image", "icon", "divider", "spacer"}
+MAP_ORIENTATIONS = {"north_up", "heading_up"}
+ALTITUDE_UNITS = {"ft", "m"}
+SPEED_UNITS = {"mph", "km/h", "kt"}
 
 
 def is_finite_number(value: Any) -> bool:
@@ -65,7 +68,7 @@ def validate_node(
     if not isinstance(node, dict):
         raise ValueError(f"{location}: expected a node")
     kind = node.get("type")
-    if not isinstance(kind, str) or kind not in CONTAINERS | BOUND | {"derived"} | STATIC:
+    if not isinstance(kind, str) or kind not in CONTAINERS | BOUND | {"derived", "map"} | STATIC:
         raise ValueError(f"{location}: unknown type {kind!r}")
     node_id = node.get("id")
     if node_id is not None:
@@ -123,6 +126,30 @@ def validate_node(
                 if not isinstance(binding.get(field), str) or not binding[field].strip():
                     raise ValueError(f"{input_location}: {field} is required")
             topics.add(binding["topic"])
+    elif kind == "map":
+        topic = node.get("topic")
+        if not isinstance(topic, str) or not topic.strip():
+            raise ValueError(f"{location}: topic is required")
+        for path_field in ("lat_path", "lon_path", "track_path", "alt_path", "speed_path", "mode_path"):
+            val = node.get(path_field)
+            if val is not None and (not isinstance(val, str) or not val.strip()):
+                raise ValueError(f"{location}: {path_field} must be a non-empty string if specified")
+        zoom = node.get("zoom", 14)
+        if isinstance(zoom, bool) or not isinstance(zoom, (int, float)) or not 1 <= zoom <= 20:
+            raise ValueError(f"{location}: zoom must be a number between 1 and 20")
+        orientation = node.get("orientation", "north_up")
+        if not isinstance(orientation, str) or orientation not in MAP_ORIENTATIONS:
+            raise ValueError(f"{location}: orientation must be one of {', '.join(sorted(MAP_ORIENTATIONS))}")
+        alt_unit = node.get("altitude_unit", "ft")
+        if not isinstance(alt_unit, str) or alt_unit not in ALTITUDE_UNITS:
+            raise ValueError(f"{location}: altitude_unit must be one of {', '.join(sorted(ALTITUDE_UNITS))}")
+        speed_unit = node.get("speed_unit", "mph")
+        if not isinstance(speed_unit, str) or speed_unit not in SPEED_UNITS:
+            raise ValueError(f"{location}: speed_unit must be one of {', '.join(sorted(SPEED_UNITS))}")
+        tile_url = node.get("tile_url")
+        if tile_url is not None and (not isinstance(tile_url, str) or not tile_url.strip()):
+            raise ValueError(f"{location}: tile_url must be a non-empty string if specified")
+        topics.add(topic)
     else:
         if "topic" in node or "payload_path" in node:
             raise ValueError(f"{location}: static widgets cannot bind to a topic")
