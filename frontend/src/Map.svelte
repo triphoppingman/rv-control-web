@@ -144,7 +144,6 @@
     bind:this={containerElement}
     class="map-viewport"
     style="height: {node.height || '360px'};"
-    tabindex="0"
     role="region"
     aria-label="Current location map"
   >

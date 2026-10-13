@@ -7,6 +7,7 @@
   export let values;
   export let now;
   export let staleAfter = 10000;
+  export let theme = 'light';
 
   const palette = { red: '#c6534b', amber: '#c68529', green: '#147d73', blue: '#3275a4', gray: '#788a86' };
 
@@ -69,13 +70,13 @@
 </script>
 
 {#if node.visible !== false}
-  {#if ['grid', 'row', 'column', 'stack', 'card'].includes(node.type)}
+  {#if ['grid', 'row', 'column', 'stack', 'card', 'flow'].includes(node.type)}
     <div class="node {node.type} {node.class || ''}" style="--cols:{node.cols || 12}; --gap:{node.gap ?? 16}px; --span:{node.span || 12}; --min-width:{node.min_width || 'auto'}">
       {#if node.type === 'card' && (node.title || node.subtitle)}
         <header class="card-header"><h2>{node.title}</h2>{#if node.subtitle}<p>{node.subtitle}</p>{/if}</header>
       {/if}
       {#each node.children || [] as child, index (child.id || index)}
-        <svelte:self node={child} {values} {now} {staleAfter} />
+        <svelte:self node={child} {values} {now} {staleAfter} {theme} />
       {/each}
     </div>
   {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline', 'derived'].includes(node.type)}
@@ -88,6 +89,7 @@
       {:else}
         {#if ['gauge', 'dial', 'sparkline'].includes(node.type)}
           <Chart type={node.type} value={missing ? null : Number(value)} min={node.min ?? 0} max={node.max ?? 100} color={accent}
+            {theme}
             historyPoints={node.history_points ?? 60} sampleIntervalMs={node.sample_interval_ms ?? 1000}
             timestamp={record?.ts == null ? null : record.ts * 1000} />
         {/if}

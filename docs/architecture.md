@@ -507,7 +507,7 @@ A node is a discriminated union on `type` with three families:
 - Static widgets have no topic and render from configuration only.
 
 Common fields are `type`, optional `id`, `span`, `min_width`, `visible`, and
-`class`. Container types are `grid`, `row`, `column`, `stack`, and `card`.
+`class`. Container types are `grid`, `row`, `column`, `stack`, `card`, and `flow`.
 Bound widget types are `gauge`, `dial`, `numeric`, `boolean`, and `sparkline`.
 Derived widget type is `derived`; it reads multiple numeric bindings and does
 not introduce a publish path.

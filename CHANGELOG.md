@@ -7,6 +7,17 @@ Changes below are unreleased; no release version or Git tag has been assigned.
 
 ### Added
 
+- Automotive analog dial widgets with radial major and minor tick subdivisions,
+  redline warning zones, tapered needle pointers with center hub caps, and
+  calibrated scales for engine speed (`×1000 RPM`), vehicle speed (`MPH`),
+  temperatures (`°F`), and boost pressure (`PSI`).
+- `flow` layout container that arranges child widgets along a row respecting
+  their configured `min_width` and cleanly breaks to subsequent lines without
+  flex-stretching remaining widgets.
+- Day / Night / Auto theme modes with masthead toggle, defaulting to Auto with
+  system `prefers-color-scheme: dark` detection and `localStorage` persistence.
+- Dark instrument cluster palette for Night mode with high-contrast dial
+  graduations, luminous needle pointers, and dark pod styling.
 - Full-screen/tab-occupying map widget centered on live GPS coordinates
   from an MQTT telemetry topic (such as `rv/gpsd/TPV`), supporting optional
   heading/compass direction, altitude, speed, GPS fix quality indicators,

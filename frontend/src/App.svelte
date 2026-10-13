@@ -20,6 +20,27 @@
   let viewerName = '';
   let busy = false;
 
+  let themeMode = 'auto';
+  try {
+    themeMode = localStorage.getItem('rv-theme-mode') || 'auto';
+  } catch (_) {}
+
+  let systemPrefersDark = false;
+  $: effectiveTheme = themeMode === 'auto'
+    ? (systemPrefersDark ? 'dark' : 'light')
+    : (themeMode === 'night' ? 'dark' : 'light');
+
+  $: if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-theme', effectiveTheme);
+  }
+
+  function setThemeMode(mode) {
+    themeMode = mode;
+    try {
+      localStorage.setItem('rv-theme-mode', mode);
+    } catch (_) {}
+  }
+
   function clearDashboard() {
     clearTimeout(retry);
     const previous = socket;
@@ -154,6 +175,14 @@
   }
 
   onMount(() => {
+    // Detect system dark mode preference for 'auto' mode.
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    systemPrefersDark = mediaQuery.matches;
+    const handleThemeChange = (event) => {
+      systemPrefersDark = event.matches;
+    };
+    mediaQuery.addEventListener?.('change', handleThemeChange);
+
     // Refresh stale indicators even when a topic stops publishing.
     const ticker = setInterval(() => { now = Date.now(); }, 1000);
     requestSession().then((valid) => {
@@ -161,6 +190,7 @@
     }).catch((cause) => { error = cause.message; });
     return () => {
       stopped = true;
+      mediaQuery.removeEventListener?.('change', handleThemeChange);
       clearInterval(ticker);
       clearTimeout(retry);
       socket?.close();
@@ -173,9 +203,16 @@
 <div class="shell">
   <header class="masthead">
     <div class="identity"><span class="brand-mark">RV<span>•</span></span><div><strong>{config?.app?.title || 'RV Control'}</strong><small>LIVE SYSTEMS</small></div></div>
-    <div class="account-actions">
-      {#if authenticated}<div class="connection" class:online={connected}><span class="connection-dot"></span>{connected ? 'Live telemetry' : 'Waiting for connection'}</div>{/if}
-      {#if authenticated && authEnabled}<span>{viewerName}</span><button type="button" disabled={busy} on:click={signOut}>Logout</button>{/if}
+    <div class="masthead-controls">
+      <div class="theme-switch" role="group" aria-label="Display theme">
+        <button type="button" class:active={themeMode === 'day'} on:click={() => setThemeMode('day')}>Day</button>
+        <button type="button" class:active={themeMode === 'night'} on:click={() => setThemeMode('night')}>Night</button>
+        <button type="button" class:active={themeMode === 'auto'} on:click={() => setThemeMode('auto')}>Auto</button>
+      </div>
+      <div class="account-actions">
+        {#if authenticated}<div class="connection" class:online={connected}><span class="connection-dot"></span>{connected ? 'Live telemetry' : 'Waiting for connection'}</div>{/if}
+        {#if authenticated && authEnabled}<span>{viewerName}</span><button type="button" disabled={busy} on:click={signOut}>Logout</button>{/if}
+      </div>
     </div>
   </header>
   {#if config}
@@ -188,7 +225,7 @@
       {#if active}
         <div class="page-heading"><div><div class="eyebrow">SYSTEM OVERVIEW</div><h1>{active.label || active.id}</h1></div><time>{new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
         <!-- Remount the tree on tab changes so chart history belongs to one tab. -->
-        {#key active.id}<Node node={active.root} {values} {now} staleAfter={config.stream?.stale_after_ms ?? 10000} />{/key}
+        {#key active.id}<Node node={active.root} {values} {now} staleAfter={config.stream?.stale_after_ms ?? 10000} theme={effectiveTheme} />{/key}
       {/if}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
     </main>
