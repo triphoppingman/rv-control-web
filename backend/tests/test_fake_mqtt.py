@@ -31,7 +31,10 @@ class FakeMqttTests(unittest.TestCase):
         scenarios = load_scenarios(
             REPOSITORY / "fake-mqtt.example.yaml", REPOSITORY / "config.test.yaml"
         )
-        self.assertEqual(set(scenarios), {"rv/renogy", "rv/hughes"})
+        self.assertEqual(
+            set(scenarios),
+            {"rv/renogy", "rv/hughes", "rv/gpsd/TPV", "rv/gpsd/SKY", "rv/obd_engine"},
+        )
         first = sample_payloads(scenarios)
         later = sample_payloads(scenarios, 30)
         self.assertEqual(first["rv/renogy"]["battery_percentage"], 72)
@@ -133,7 +136,10 @@ class FakeMqttTests(unittest.TestCase):
             main(["--scenario", str(REPOSITORY / "fake-mqtt.example.yaml"),
                   "--dashboard-config", str(REPOSITORY / "config.test.yaml"), "--check"])
         client.assert_not_called()
-        self.assertEqual(set(json.loads(output.getvalue())), {"rv/renogy", "rv/hughes"})
+        self.assertEqual(
+            set(json.loads(output.getvalue())),
+            {"rv/renogy", "rv/hughes", "rv/gpsd/TPV", "rv/gpsd/SKY", "rv/obd_engine"},
+        )
 
     def test_invalid_config_exits_with_explicit_error(self) -> None:
         with redirect_stderr(StringIO()), self.assertRaises(SystemExit) as error:

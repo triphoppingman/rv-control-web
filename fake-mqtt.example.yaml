@@ -46,6 +46,15 @@ topics:
       track: {generator: ramp, min: 0, max: 360, period_s: 120, decimals: 1}
       alt: {generator: sine, min: 100, max: 120, period_s: 60, decimals: 1}
       speed: {generator: sine, min: 10, max: 25, period_s: 30, decimals: 1}
+  rv/gpsd/SKY:
+    interval_s: 1
+    payload:
+      class: SKY
+      nSat: {generator: sine, min: 14, max: 18, period_s: 120, decimals: 0}
+      uSat: {generator: sine, min: 8, max: 12, period_s: 120, decimals: 0}
+      hdop: {generator: sine, min: 0.8, max: 1.4, period_s: 90, decimals: 2}
+      pdop: {generator: sine, min: 1.3, max: 2.2, period_s: 90, decimals: 2}
+      vdop: {generator: sine, min: 1.0, max: 1.7, period_s: 90, decimals: 2}
   rv/obd_engine:
     interval_s: 1
     payload:
