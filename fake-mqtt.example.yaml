@@ -55,16 +55,19 @@ topics:
       hdop: {generator: sine, min: 0.8, max: 1.4, period_s: 90, decimals: 2}
       pdop: {generator: sine, min: 1.3, max: 2.2, period_s: 90, decimals: 2}
       vdop: {generator: sine, min: 1.0, max: 1.7, period_s: 90, decimals: 2}
-  rv/obd_engine:
+  rv/obd:
     interval_s: 1
     payload:
       rpm: {generator: sine, min: 1200, max: 2600, period_s: 40, decimals: 0}
       speed: {generator: sine, min: 25, max: 65, period_s: 60, decimals: 0}
       load: {generator: sine, min: 20, max: 70, period_s: 30, decimals: 1}
       coolant_temp: {generator: sine, min: 185, max: 210, period_s: 90, decimals: 1}
-      egt11: {generator: sine, min: 650, max: 850, period_s: 50, decimals: 1}
       tft: {generator: sine, min: 160, max: 195, period_s: 100, decimals: 1}
-      boost: {generator: sine, min: 2, max: 24, period_s: 30, decimals: 1}
+      baro: {generator: sine, min: 0.96, max: 1.02, period_s: 120, decimals: 2}
+      iat: {generator: sine, min: 70, max: 90, period_s: 90, decimals: 1}
       fuel: {generator: ramp, min: 40, max: 60, period_s: 1800, decimals: 1}
-
+      volt: {generator: sine, min: 13.8, max: 14.8, period_s: 60, decimals: 2}
+      gear: {generator: sequence, values: [1, 2, 3, 4, 5, 6], hold_s: 10}
+      ambient: {generator: sine, min: 65, max: 80, period_s: 120, decimals: 1}
+      tcc: {generator: sequence, values: [0, 70], hold_s: 20}
 

@@ -20,20 +20,54 @@ from backend.app.fake_mqtt import (
     sample_payloads,
     validate_template,
 )
-from backend.app.check_dashboard import calculate_derived
+from backend.app.check_dashboard import calculate_derived, iter_nodes, validate_samples
+from backend.app.dashboard import load_dashboard
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 
 
 class FakeMqttTests(unittest.TestCase):
+    def test_obd_example_matches_active_pid_payload(self) -> None:
+        dashboard, tab_topics = load_dashboard(
+            REPOSITORY / "dashboard.example.yaml", REPOSITORY / "assets"
+        )
+        self.assertEqual(tab_topics["obd2"], {"rv/obd"})
+        obd = next(tab for tab in dashboard["tabs"] if tab["id"] == "obd2")
+        nodes = [node for node, _ in iter_nodes(obd["root"], "root")]
+        self.assertEqual(
+            {node["payload_path"] for node in nodes if "payload_path" in node},
+            {"rpm", "coolant_temp", "tft", "baro", "load", "iat",
+             "speed", "fuel", "volt", "gear", "ambient", "tcc"},
+        )
+        payload = {
+            "rpm": 600.0, "coolant_temp": 174.2, "tft": 170.9375,
+            "baro": 0.98, "load": 10.588235, "iat": 31, "speed": 0.0,
+            "fuel": 89.41248, "volt": 14.76, "gear": 1, "ambient": 24, "tcc": 70,
+        }
+        self.assertEqual(
+            validate_samples({"tabs": [obd]}, {"rv/obd": payload}, {"rv/obd"}), []
+        )
+        with TemporaryDirectory() as directory:
+            config = Path(directory) / "config.yaml"
+            config.write_text(yaml.safe_dump({
+                "dashboard_file": str(REPOSITORY / "dashboard.example.yaml"),
+                "assets_dir": str(REPOSITORY / "assets"),
+            }))
+            samples = sample_payloads(load_scenarios(
+                REPOSITORY / "fake-mqtt.example.yaml", config
+            ))
+        self.assertEqual(
+            validate_samples(dashboard, samples, set().union(*tab_topics.values())), []
+        )
+
     def test_example_scenario_selects_only_dashboard_topics(self) -> None:
         scenarios = load_scenarios(
             REPOSITORY / "fake-mqtt.example.yaml", REPOSITORY / "config.test.yaml"
         )
         self.assertEqual(
             set(scenarios),
-            {"rv/renogy", "rv/hughes", "rv/gpsd/TPV", "rv/gpsd/SKY", "rv/obd_engine"},
+            {"rv/renogy", "rv/hughes", "rv/gpsd/TPV", "rv/gpsd/SKY", "rv/obd"},
         )
         first = sample_payloads(scenarios)
         later = sample_payloads(scenarios, 30)
@@ -138,7 +172,7 @@ class FakeMqttTests(unittest.TestCase):
         client.assert_not_called()
         self.assertEqual(
             set(json.loads(output.getvalue())),
-            {"rv/renogy", "rv/hughes", "rv/gpsd/TPV", "rv/gpsd/SKY", "rv/obd_engine"},
+            {"rv/renogy", "rv/hughes", "rv/gpsd/TPV", "rv/gpsd/SKY", "rv/obd"},
         )
 
     def test_invalid_config_exits_with_explicit_error(self) -> None:

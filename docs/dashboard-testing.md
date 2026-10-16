@@ -23,7 +23,7 @@ see the [README](../README.md); for the application design, see
 | File | Purpose |
 | --- | --- |
 | [config.test.yaml](../config.test.yaml) | Test backend settings; localhost broker on port 1883, example dashboard, 12 Hz streaming, 10-second default staleness |
-| [dashboard.example.yaml](../dashboard.example.yaml) | Shipped Power and Shore Power tabs |
+| [dashboard.example.yaml](../dashboard.example.yaml) | Shipped Power, Shore Power, and OBD2 tabs |
 | [fake-mqtt.example.yaml](../fake-mqtt.example.yaml) | Synthetic payload templates and change patterns |
 | [docker-compose.test.yml](../deploy/docker-compose.test.yml) | Test-only Mosquitto service in Compose project `rv-web-test` |
 | [mosquitto.test.conf](../deploy/mosquitto.test.conf) | Anonymous test broker with persistence disabled |
@@ -38,6 +38,13 @@ The example dashboard has:
 | --- | --- | --- |
 | Power | `rv/renogy` | State-of-charge gauge and trend, PV-to-battery voltage delta, PV power |
 | Shore Power | `rv/hughes` | Line-voltage gauge, current, power trend, error code, energy |
+| OBD2 | `rv/obd` | RPM, speed, engine load, coolant and transmission temperatures, intake and ambient air, fuel, barometric pressure, voltage, gear, raw torque converter clutch |
+
+OBD bindings use the configured MQTT topic, not the source section name
+(`obd_engine`). The example uses `rv/obd` and only active PID fields; disabled
+exhaust-gas and boost PIDs have no widgets or fake readings. Verify topic names,
+available fields, and temperature units against your publisher's MQTT payload
+and PID definitions before using these bindings with a different installation.
 
 The scenario also defines `rv/wled/patio` for dashboards with lighting widgets.
 It is not published when the selected dashboard does not reference it.

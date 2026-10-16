@@ -93,3 +93,123 @@ tabs:
               payload_path: energy
               unit: kWh
               decimals: 3
+  - id: obd2
+    label: OBD2
+    root:
+      type: grid
+      cols: 12
+      children:
+        - type: card
+          title: Primary Instruments
+          span: 6
+          children:
+            - type: flow
+              gap: 16
+              children:
+                - type: dial
+                  label: Engine speed
+                  topic: rv/obd
+                  payload_path: rpm
+                  unit: RPM
+                  min: 0
+                  max: 4000
+                  decimals: 0
+                  min_width: 220px
+                - type: dial
+                  label: Vehicle speed
+                  topic: rv/obd
+                  payload_path: speed
+                  unit: MPH
+                  min: 0
+                  max: 100
+                  decimals: 0
+                  min_width: 220px
+            - type: gauge
+              label: Engine load
+              topic: rv/obd
+              payload_path: load
+              unit: "%"
+              min: 0
+              max: 100
+              decimals: 1
+        - type: card
+          title: Temperatures
+          span: 6
+          children:
+            - type: flow
+              gap: 16
+              children:
+                - type: dial
+                  label: Coolant
+                  topic: rv/obd
+                  payload_path: coolant_temp
+                  unit: "°F"
+                  min: 100
+                  max: 260
+                  decimals: 1
+                  min_width: 180px
+                - type: dial
+                  label: Transmission fluid
+                  topic: rv/obd
+                  payload_path: tft
+                  unit: "°F"
+                  min: 100
+                  max: 260
+                  decimals: 1
+                  min_width: 180px
+                - type: numeric
+                  label: Intake air
+                  topic: rv/obd
+                  payload_path: iat
+                  unit: "°F"
+                  decimals: 1
+                  min_width: 180px
+                - type: numeric
+                  label: Ambient air
+                  topic: rv/obd
+                  payload_path: ambient
+                  unit: "°F"
+                  decimals: 1
+                  min_width: 180px
+        - type: card
+          title: Engine and transmission
+          span: 12
+          children:
+            - type: flow
+              gap: 16
+              children:
+                - type: dial
+                  label: Fuel level
+                  topic: rv/obd
+                  payload_path: fuel
+                  unit: "%"
+                  min: 0
+                  max: 100
+                  decimals: 1
+                  min_width: 200px
+                - type: numeric
+                  label: Barometric pressure
+                  topic: rv/obd
+                  payload_path: baro
+                  unit: bar
+                  decimals: 2
+                  min_width: 200px
+                - type: numeric
+                  label: Control module voltage
+                  topic: rv/obd
+                  payload_path: volt
+                  unit: V
+                  decimals: 2
+                  min_width: 200px
+                - type: numeric
+                  label: Gear
+                  topic: rv/obd
+                  payload_path: gear
+                  decimals: 0
+                  min_width: 200px
+                - type: numeric
+                  label: Torque converter clutch (raw)
+                  topic: rv/obd
+                  payload_path: tcc
+                  decimals: 0
+                  min_width: 200px
