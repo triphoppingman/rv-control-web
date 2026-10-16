@@ -16,6 +16,7 @@
   export let historyPoints = 60;
   export let sampleIntervalMs = 1000;
   export let timestamp = null;
+  export let lowWarningBelow = null;
 
   let element;
   let chart;
@@ -97,7 +98,10 @@
         axisLine: {
           lineStyle: {
             width: 3,
-            color: [
+            color: lowWarningBelow !== null ? [
+              [(lowWarningBelow - min) / range, isDark ? '#f06459' : '#c6534b'],
+              [1, isDark ? '#43685e' : '#4f6c62'],
+            ] : [
               [0.8, isDark ? '#43685e' : '#4f6c62'],
               [1, isDark ? '#f06459' : '#c6534b'],
             ],

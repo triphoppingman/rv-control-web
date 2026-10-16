@@ -180,6 +180,7 @@ tabs:
               children:
                 - type: dial
                   label: Fuel level
+                  low_warning_below: 15
                   topic: rv/obd
                   payload_path: fuel
                   unit: "%"

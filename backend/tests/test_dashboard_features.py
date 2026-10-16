@@ -141,6 +141,52 @@ class DashboardFeatureTests(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("non-finite value", errors[0])
 
+    def test_dial_low_warning_validation(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "dashboard.yaml"
+            for kind, warning, valid in (
+                ("dial", 15, True),
+                ("dial", 0, False),
+                ("dial", 100, False),
+                ("dial", -1, False),
+                ("dial", 101, False),
+                ("dial", True, False),
+                ("dial", "15", False),
+                ("dial", None, False),
+                ("dial", float("nan"), False),
+                ("dial", float("inf"), False),
+                ("gauge", 15, False),
+                ("numeric", 15, False),
+            ):
+                with self.subTest(kind=kind, warning=warning):
+                    node = {
+                        "type": kind, "topic": "rv/obd", "payload_path": "fuel",
+                        "min": 0, "max": 100, "low_warning_below": warning,
+                    }
+                    path.write_text(yaml.safe_dump({"tabs": [{"id": "test", "root": node}]}))
+                    if valid:
+                        dashboard, _ = load_dashboard(path, root / "assets")
+                        self.assertEqual(dashboard["tabs"][0]["root"]["low_warning_below"], 15)
+                    else:
+                        with self.assertRaisesRegex(ValueError, "low_warning_below"):
+                            load_dashboard(path, root / "assets")
+
+    def test_only_example_fuel_dial_has_low_warning(self) -> None:
+        repository = Path(__file__).resolve().parents[2]
+        dashboard, _ = load_dashboard(
+            repository / "dashboard.example.yaml", repository / "assets"
+        )
+        configured = [
+            node
+            for tab in dashboard["tabs"]
+            for node, _ in iter_nodes(tab["root"], "root")
+            if "low_warning_below" in node
+        ]
+        self.assertEqual(len(configured), 1)
+        self.assertEqual(configured[0]["payload_path"], "fuel")
+        self.assertEqual(configured[0]["low_warning_below"], 15)
+
     def test_sample_check_validates_paths_types_and_topic_coverage(self) -> None:
         dashboard = {
             "tabs": [

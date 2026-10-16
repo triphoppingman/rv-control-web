@@ -89,7 +89,7 @@
       {:else}
         {#if ['gauge', 'dial', 'sparkline'].includes(node.type)}
           <Chart type={node.type} value={missing ? null : Number(value)} min={node.min ?? 0} max={node.max ?? 100} color={accent}
-            {theme}
+            {theme} lowWarningBelow={node.low_warning_below ?? null}
             historyPoints={node.history_points ?? 60} sampleIntervalMs={node.sample_interval_ms ?? 1000}
             timestamp={record?.ts == null ? null : record.ts * 1000} />
         {/if}

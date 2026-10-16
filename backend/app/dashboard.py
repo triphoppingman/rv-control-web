@@ -70,6 +70,8 @@ def validate_node(
     kind = node.get("type")
     if not isinstance(kind, str) or kind not in CONTAINERS | BOUND | {"derived", "map"} | STATIC:
         raise ValueError(f"{location}: unknown type {kind!r}")
+    if "low_warning_below" in node and kind != "dial":
+        raise ValueError(f"{location}: low_warning_below is only supported for dial widgets")
     node_id = node.get("id")
     if node_id is not None:
         if not isinstance(node_id, str) or not node_id or node_id in seen_nodes:
@@ -95,6 +97,10 @@ def validate_node(
                 or minimum >= maximum
             ):
                 raise ValueError(f"{location}: min and max must be finite numbers with min < max")
+            if "low_warning_below" in node:
+                warning = node["low_warning_below"]
+                if not is_finite_number(warning) or not minimum < warning < maximum:
+                    raise ValueError(f"{location}: low_warning_below must be a finite number between min and max")
         if kind == "sparkline":
             history_points = node.get("history_points", 60)
             if isinstance(history_points, bool) or not isinstance(history_points, int) or not 2 <= history_points <= 1000:
