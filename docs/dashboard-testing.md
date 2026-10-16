@@ -32,6 +32,15 @@ The local installation can also have `config.yaml` and `dashboard.yaml`.
 Those files are gitignored and may differ from the examples. Do not assume
 their contents match another installation.
 
+Hughes bindings depend on the device's published payload. The example uses
+single-leg fields (`voltage`, `current`, `power`, `energy`, `error_code`).
+A combined two-leg payload instead uses those names with `_line_1` and
+`_line_2` suffixes, including `error_code_line_1` and `error_code_line_2`.
+Configure separate widgets for each leg using the exact published field names.
+A connected UI can show `No data` even while MQTT messages arrive when its
+`payload_path` fields do not match the payload. After correcting the bindings,
+save the dashboard; the backend reloads it and updates connected browsers.
+
 The example dashboard has:
 
 | Tab | Topic | Widgets |
@@ -78,8 +87,13 @@ RV_WEB_CONFIG=config.test.yaml backend/.venv/bin/uvicorn \
 
 `RV_WEB_CONFIG` chooses the backend runtime configuration. Relative
 `dashboard_file` and `assets_dir` paths are resolved from that file's directory.
-YAML changes require a backend restart; `--reload` watches Python code and is
-not a substitute for explicitly restarting after YAML edits.
+Dashboard YAML is checked for changes every second. Valid edits automatically
+update connected browsers, preserving the selected tab if it still exists
+(otherwise selecting the first tab). Widgets remount, clearing browser-only
+chart history. Topic changes reconnect MQTT with the updated subscriptions.
+Invalid edits are logged and shown in connected browsers while the last valid
+dashboard continues running; save a corrected file to recover automatically.
+Runtime settings in `config.yaml` still require a backend restart.
 
 ### 3. Start fake telemetry
 
@@ -116,7 +130,8 @@ this option.
 
 | Changed file or behavior | Required action |
 | --- | --- |
-| Dashboard YAML or backend runtime settings | Stop backend with Ctrl+C, restart it, then reload the browser |
+| Dashboard YAML | Save; connected browsers update automatically within about a second |
+| Backend runtime settings | Stop backend with Ctrl+C, restart it, then reload the browser |
 | Scenario YAML | Stop publisher with Ctrl+C and restart it |
 | Dashboard topic list | Restart both backend and publisher with matching dashboard selections |
 | Test Mosquitto settings or Compose ports | Recreate the test broker with the Compose commands below |
@@ -275,7 +290,26 @@ must be a finite number strictly between `min` and `max`, in the dial's units.
 Without this setting, dials retain their existing red zone over the top 20%
 of the range. Other gauges and widget threshold colors are unchanged.
 
+Set `show_warning: false` on a dial to remove the red warning arc and ticks.
+The default is `true`, preserving existing dial warning zones. For a voltage
+dial centered on 120 V at the top, use `min: 90` and `max: 150` (the midpoint
+of the symmetric needle sweep is 120). This changes the displayed scale only,
+not the telemetry value or protection settings.
+
 ## Browser-only trends
+
+Chart rendering is split into `Dial.svelte` (needle instruments),
+`Gauge.svelte` (arc gauges), and `Sparkline.svelte` (sampled line history).
+They share `Chart.svelte` for ECharts initialization, resizing, and disposal.
+`Node.svelte` still owns recursive containers, telemetry bindings, labels,
+and stale/missing indicators; dashboard YAML types are unchanged.
+
+To run the chart component regression checks, start the frontend with
+`npm --prefix frontend run dev`, then open
+<http://127.0.0.1:5173/tests/charts.html>. The page reports PASS or FAIL for
+needle scales and warnings, arc gauges, live updates, themes, sparkline
+sampling/history, resizing, and cleanup. These checks mount real components
+with synthetic readings; no backend or MQTT broker is needed.
 
 Add `type: sparkline` with ordinary `topic` and `payload_path` bindings:
 
@@ -370,7 +404,7 @@ independent confirmation of broker health.
 
 | Symptom | Check |
 | --- | --- |
-| Only Power tab appears | Confirm backend uses `config.test.yaml`, restart after YAML changes, reload page; `/api/config` should include `shore` |
+| Only Power tab appears | Confirm the selected dashboard includes `shore`; valid dashboard edits reload automatically. Changing the runtime config selection requires a restart. `/api/config` should include `shore` |
 | No data | Check publisher logs, scenario topic/path coverage, and backend broker settings |
 | Stale readings | Check publish interval versus `stale_after_ms`; stop the publisher to exercise staleness |
 | MQTT reconnect warnings | Check broker is running and ports agree; publishers and backend retry automatically |

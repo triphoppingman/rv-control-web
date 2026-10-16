@@ -30,6 +30,7 @@ if not isinstance(settings, dict):
 dashboard_path = CONFIG_PATH.parent / settings.get("dashboard_file", "dashboard.yaml")
 assets_dir = (CONFIG_PATH.parent / settings.get("assets_dir", "assets")).resolve()
 dashboard, tab_topics = load_dashboard(dashboard_path, assets_dir)
+dashboard_signature = dashboard_path.stat()
 all_topics = set().union(*tab_topics.values())
 stream_settings = settings.get("stream", {})
 tick_hz = float(stream_settings.get("tick_hz", 12))
@@ -136,10 +137,65 @@ async def flush_updates() -> None:
                     clients.discard(viewer)
 
 
+async def watch_dashboard() -> None:
+    """Reload valid dashboard edits and restart MQTT only when topics change."""
+    global dashboard, tab_topics, all_topics, dashboard_signature
+    mqtt_task = asyncio.create_task(receive_mqtt())
+    previous_error = None
+    try:
+        while True:
+            await asyncio.sleep(1)
+            try:
+                signature = dashboard_path.stat()
+                if (signature.st_mtime_ns, signature.st_size, signature.st_ino) == (
+                    dashboard_signature.st_mtime_ns,
+                    dashboard_signature.st_size,
+                    dashboard_signature.st_ino,
+                ):
+                    continue
+                dashboard_signature = signature
+                updated, updated_topics = load_dashboard(dashboard_path, assets_dir)
+            except (OSError, UnicodeError, ValueError, yaml.YAMLError) as exc:
+                message = f"Dashboard reload failed: {exc}. Keeping the last valid dashboard."
+                if message == previous_error:
+                    continue
+                previous_error = message
+                logger.error("%s", message)
+                notification = {"type": "error", "code": "dashboard_reload", "message": message}
+            else:
+                previous_error = None
+                topics = set().union(*updated_topics.values())
+                changed_topics = topics != all_topics
+                dashboard, tab_topics, all_topics = updated, updated_topics, topics
+                for topic in list(values):
+                    if topic not in all_topics:
+                        del values[topic]
+                for viewer in clients:
+                    viewer.tab = None
+                    viewer.pending.clear()
+                if changed_topics:
+                    mqtt_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await mqtt_task
+                    mqtt_task = asyncio.create_task(receive_mqtt())
+                logger.info("Reloaded dashboard from %s", dashboard_path)
+                notification = {"type": "config", "config": {**dashboard, "stream": stream_settings}}
+            for viewer in tuple(clients):
+                try:
+                    await viewer.send(notification)
+                except (WebSocketDisconnect, RuntimeError, OSError) as exc:
+                    logger.info("Dashboard notification failed: %s", exc)
+                    clients.discard(viewer)
+    finally:
+        mqtt_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await mqtt_task
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     """Start and stop the broker listener and broadcast ticker."""
-    tasks = [asyncio.create_task(receive_mqtt()), asyncio.create_task(flush_updates())]
+    tasks = [asyncio.create_task(watch_dashboard()), asyncio.create_task(flush_updates())]
     try:
         yield
     finally:
@@ -279,6 +335,7 @@ async def websocket(socket: WebSocket) -> None:
     viewer = Viewer(socket, socket.cookies.get(COOKIE_NAME))
     clients.add(viewer)
     try:
+        await viewer.send({"type": "config", "config": {**dashboard, "stream": stream_settings}})
         while True:
             if auth.enabled and auth.session(viewer.token) is None:
                 await viewer.close()

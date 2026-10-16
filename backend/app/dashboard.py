@@ -72,6 +72,9 @@ def validate_node(
         raise ValueError(f"{location}: unknown type {kind!r}")
     if "low_warning_below" in node and kind != "dial":
         raise ValueError(f"{location}: low_warning_below is only supported for dial widgets")
+    if "show_warning" in node:
+        if kind != "dial" or not isinstance(node["show_warning"], bool):
+            raise ValueError(f"{location}: show_warning must be a boolean on a dial widget")
     node_id = node.get("id")
     if node_id is not None:
         if not isinstance(node_id, str) or not node_id or node_id in seen_nodes:

@@ -134,7 +134,7 @@ assuming that similarly named sources have identical schemas.
 | --- | --- | --- |
 | D1 | The dashboard is purely instantaneous. | Use an in-memory last-value cache; do not add a time-series store. |
 | D2 | The first release is read-only. | Use WebSocket so a future write path can be added without changing transports. |
-| D3 | Display and layout are configured by YAML at deployment time. | Validate configuration at startup; reloading requires a restart. |
+| D3 | Display and layout are configured by YAML at deployment time. | Validate at startup and automatically reload valid dashboard edits; runtime settings require a restart. |
 | D4 | Payloads are JSON. | Parse each message once; widgets bind to fields through `payload_path`. |
 | D5 | The system supports approximately 200 devices across multiple tabs. | Use one backend process and no external fan-out bus. |
 | D6 | Only the displayed tab is active. | Stream only the active tab while caching current values in memory. |
@@ -635,6 +635,12 @@ message has a `type` discriminator. Message type names are lowercase.
 
 ### 10.2 Server to client
 
+The server sends `{ "type": "config", "config": ... }` containing the same
+configuration as `/api/config` on each WebSocket connection and after valid
+dashboard edits. The browser rebuilds widgets and subscribes to its current
+tab (or the first tab if the current tab was removed). Invalid edits send an
+`error` with code `dashboard_reload`; the last valid dashboard stays active.
+
 ```json
 {
   "type": "snapshot",
@@ -786,8 +792,11 @@ that default. Builds use Docker's native/default platform unless
 emulation or a suitable remote builder; the script does not configure either.
 `tag` requires explicit source and destination arguments.
 
-Deploying a new `dashboard.yaml` requires restarting the backend so topic
-subscriptions are re-derived. Commit `config.example.yaml` and
+The backend checks `dashboard.yaml` every second and automatically reloads
+valid edits, reconnecting MQTT when the topic set changes and notifying
+connected browsers. Invalid edits retain the last valid dashboard and report
+an error. Changes to runtime settings still require restarting the backend.
+Commit `config.example.yaml` and
 `dashboard.example.yaml`, but never environment-specific secrets.
 
 For local testing without physical devices, `deploy/docker-compose.test.yml`
@@ -876,7 +885,7 @@ fan-out. That is outside the scope of v1.
 - Per-user dashboards and role-based authorization.
 - Short-term server-side history or a time-series store.
 - In-app layout editing with editable configuration.
-- SIGHUP-based dashboard hot reload.
+- SIGHUP-triggered reload in addition to automatic dashboard file watching.
 
 ## 20. Repository Structure
 
@@ -1072,6 +1081,7 @@ type TopicValue = {
 };
 
 type ServerMsg =
+  | { type: "config"; config: DashboardConfig }
   | { type: "snapshot"; tab: string; values: TopicValue[] }
   | { type: "update"; values: TopicValue[] }
   | { type: "error"; code: string; message: string };

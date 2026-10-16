@@ -19,6 +19,7 @@
   let password = '';
   let viewerName = '';
   let busy = false;
+  let configRevision = 0;
 
   let themeMode = 'auto';
   try {
@@ -63,6 +64,14 @@
     return authenticated;
   }
 
+  function applyDashboard(data) {
+    config = data;
+    configRevision += 1;
+    error = '';
+    const requested = new URLSearchParams(location.search).get('tab');
+    select(data.tabs.find((tab) => tab.id === requested) || data.tabs[0]);
+  }
+
   async function loadDashboard() {
     const response = await fetch('/api/config', { cache: 'no-store' });
     if (response.status === 401) {
@@ -73,9 +82,7 @@
     if (!response.ok) throw new Error(`Configuration unavailable (${response.status})`);
     const data = await response.json();
     if (stopped) return;
-    config = data;
-    const requested = new URLSearchParams(location.search).get('tab');
-    select(data.tabs.find((tab) => tab.id === requested) || data.tabs[0]);
+    applyDashboard(data);
     connect();
   }
 
@@ -136,13 +143,20 @@
       if (socket !== current) return;
       connected = true;
       delay = 500;
-      if (active) socket.send(JSON.stringify({ type: 'subscribe', tab: active.id }));
+      // The server sends the latest configuration on every connection.
     };
     socket.onmessage = (event) => {
       if (socket !== current) return;
       const message = JSON.parse(event.data);
+      if (message.type === 'config') {
+        applyDashboard(message.config);
+        return;
+      }
       // A snapshot replaces current-tab state; later updates merge by topic.
-      if (message.type === 'snapshot' && message.tab === active?.id) values = {};
+      if (message.type === 'snapshot') {
+        if (message.tab !== active?.id) return;
+        values = {};
+      }
       if (message.type === 'snapshot' || message.type === 'update') {
         for (const record of message.values) values[record.topic] = record;
         // Reassign so Svelte notices changes to the topic map.
@@ -225,7 +239,7 @@
       {#if active}
         <div class="page-heading"><div><div class="eyebrow">SYSTEM OVERVIEW</div><h1>{active.label || active.id}</h1></div><time>{new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
         <!-- Remount the tree on tab changes so chart history belongs to one tab. -->
-        {#key active.id}<Node node={active.root} {values} {now} staleAfter={config.stream?.stale_after_ms ?? 10000} theme={effectiveTheme} />{/key}
+        {#key `${configRevision}:${active.id}`}<Node node={active.root} {values} {now} staleAfter={config.stream?.stale_after_ms ?? 10000} theme={effectiveTheme} />{/key}
       {/if}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
     </main>

@@ -172,6 +172,28 @@ class DashboardFeatureTests(unittest.TestCase):
                         with self.assertRaisesRegex(ValueError, "low_warning_below"):
                             load_dashboard(path, root / "assets")
 
+    def test_dial_warning_can_be_disabled(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "dashboard.yaml"
+            for kind, setting, valid in (
+                ("dial", False, True), ("dial", True, True),
+                ("dial", "false", False), ("dial", 0, False),
+                ("numeric", False, False),
+            ):
+                with self.subTest(kind=kind, setting=setting):
+                    node = {
+                        "type": kind, "topic": "rv/hughes", "payload_path": "voltage_line_1",
+                        "min": 90, "max": 150, "show_warning": setting,
+                    }
+                    path.write_text(yaml.safe_dump({"tabs": [{"id": "shore", "root": node}]}))
+                    if valid:
+                        dashboard, _ = load_dashboard(path, root)
+                        self.assertEqual(dashboard["tabs"][0]["root"]["show_warning"], setting)
+                    else:
+                        with self.assertRaisesRegex(ValueError, "show_warning"):
+                            load_dashboard(path, root)
+
     def test_only_example_fuel_dial_has_low_warning(self) -> None:
         repository = Path(__file__).resolve().parents[2]
         dashboard, _ = load_dashboard(

@@ -161,6 +161,7 @@ class AuthTests(unittest.TestCase):
         with patch.object(main, "receive_mqtt", no_mqtt), TestClient(main.app, base_url=ORIGIN) as client:
             self.login(client)
             with client.websocket_connect("ws://127.0.0.1:8000/ws", headers={"Origin": ORIGIN}) as socket:
+                self.assertEqual(socket.receive_json()["type"], "config")
                 socket.send_json({"type": "subscribe", "tab": "power"})
                 self.assertEqual(socket.receive_json()["type"], "snapshot")
                 client.post("/api/auth/logout", headers={"Origin": ORIGIN})
@@ -172,6 +173,7 @@ class AuthTests(unittest.TestCase):
         with patch.object(main, "receive_mqtt", no_mqtt), TestClient(main.app, base_url=ORIGIN) as client:
             self.login(client)
             with client.websocket_connect("ws://127.0.0.1:8000/ws", headers={"Origin": ORIGIN}) as socket:
+                self.assertEqual(socket.receive_json()["type"], "config")
                 token = client.cookies.get(COOKIE_NAME)
                 self.auth.sessions[token] = Session("viewer", time.monotonic() - 1)
                 with self.assertRaises(WebSocketDisconnect) as error:

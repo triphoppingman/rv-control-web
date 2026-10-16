@@ -1,5 +1,7 @@
 <script>
-  import Chart from './Chart.svelte';
+  import Dial from './Dial.svelte';
+  import Gauge from './Gauge.svelte';
+  import Sparkline from './Sparkline.svelte';
   import Map from './Map.svelte';
 
   // The same component recurses through layout containers and renders leaf widgets.
@@ -87,9 +89,16 @@
           <span class="indicator"></span>{missing ? '--' : (node.on_when === undefined ? !!value : value === node.on_when) ? (node.true_label || 'On') : (node.false_label || 'Off')}
         </div>
       {:else}
-        {#if ['gauge', 'dial', 'sparkline'].includes(node.type)}
-          <Chart type={node.type} value={missing ? null : Number(value)} min={node.min ?? 0} max={node.max ?? 100} color={accent}
+        {#if node.type === 'dial'}
+          <Dial value={missing ? null : Number(value)} min={node.min ?? 0} max={node.max ?? 100}
             {theme} lowWarningBelow={node.low_warning_below ?? null}
+            showWarning={node.show_warning ?? true} />
+        {:else if node.type === 'gauge'}
+          <Gauge value={missing ? null : Number(value)} min={node.min ?? 0} max={node.max ?? 100}
+            color={accent} {theme} />
+        {:else if node.type === 'sparkline'}
+          <Sparkline value={missing ? null : Number(value)} min={node.min ?? 0} max={node.max ?? 100} color={accent}
+            {theme}
             historyPoints={node.history_points ?? 60} sampleIntervalMs={node.sample_interval_ms ?? 1000}
             timestamp={record?.ts == null ? null : record.ts * 1000} />
         {/if}
