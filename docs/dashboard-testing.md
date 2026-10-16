@@ -264,11 +264,13 @@ the sample checker and live testing for those results.
 Keep captured installation payloads outside version control if they contain
 private information. Generated sample files are disposable.
 
-## Low-fuel dial warning
+## Low-fuel and low-battery dial warnings
 
-The fuel dial sets `low_warning_below: 15` with `min: 0` and `max: 100`.
+The fuel and house battery state-of-charge dials set `low_warning_below: 15`
+with `min: 0` and `max: 100`.
 This places the red arc at the start of the dial, from empty to 15%, and
-leaves the remaining arc in its normal color. The setting is dial-only and
+leaves the remaining arc in its normal color, including at full charge.
+The setting is dial-only and
 must be a finite number strictly between `min` and `max`, in the dial's units.
 Without this setting, dials retain their existing red zone over the top 20%
 of the range. Other gauges and widget threshold colors are unchanged.

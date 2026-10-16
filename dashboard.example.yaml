@@ -11,8 +11,9 @@ tabs:
           title: House battery
           span: 6
           children:
-            - type: gauge
+            - type: dial
               label: State of charge
+              low_warning_below: 15
               topic: rv/renogy
               payload_path: battery_percentage
               unit: "%"
