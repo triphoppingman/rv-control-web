@@ -1,6 +1,13 @@
 # Only topics referenced by the selected dashboard are published.
 interval_s: 1
 topics:
+  rv/tanks:
+    interval_s: 2
+    retain: true
+    payload:
+      fresh_level: {generator: sequence, values: [3, 2, 1, 0], hold_s: 10}
+      gray_level: {generator: sequence, values: [0, 1, 2, 3], hold_s: 15}
+      black_level: {generator: sequence, values: [0, 1, 2, 3], hold_s: 20}
   rv/renogy:
     payload:
       battery_percentage: {generator: sine, min: 64, max: 80, period_s: 120, decimals: 1}
@@ -70,4 +77,3 @@ topics:
       gear: {generator: sequence, values: [1, 2, 3, 4, 5, 6], hold_s: 10}
       ambient: {generator: sine, min: 65, max: 80, period_s: 120, decimals: 1}
       tcc: {generator: sequence, values: [0, 70], hold_s: 20}
-

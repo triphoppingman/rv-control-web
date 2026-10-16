@@ -20,6 +20,47 @@ from backend.app.dashboard import load_dashboard
 
 
 class DashboardFeatureTests(unittest.TestCase):
+    def test_tank_configuration_and_numeric_samples(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "dashboard.yaml"
+            node = {
+                "type": "tank", "topic": "rv/tanks", "payload_path": "fresh",
+                "min": 0, "max": 3, "segments": 3,
+            }
+            path.write_text(yaml.safe_dump({"tabs": [{"id": "tanks", "root": node}]}))
+            dashboard, topics = load_dashboard(path, root)
+            self.assertEqual(topics, {"tanks": {"rv/tanks"}})
+            for value in (0, 1, 2, 3):
+                self.assertEqual(validate_samples(
+                    dashboard, {"rv/tanks": {"fresh": value}}, {"rv/tanks"}
+                ), [])
+            for value in ("2", None, True, float("inf")):
+                with self.subTest(value=value):
+                    self.assertTrue(validate_samples(
+                        dashboard, {"rv/tanks": {"fresh": value}}, {"rv/tanks"}
+                    ))
+
+    def test_tank_rejects_invalid_segments_and_ranges(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "dashboard.yaml"
+            for settings in (
+                {"segments": 0}, {"segments": 21}, {"segments": 2.5},
+                {"segments": True}, {"segments": "3"}, {"segments": None},
+                {"min": 3, "max": 3}, {"min": 4, "max": 3},
+                {"min": float("nan")}, {"max": float("inf")},
+            ):
+                with self.subTest(settings=settings):
+                    node = {"type": "tank", "topic": "rv/tanks", "payload_path": "fresh", **settings}
+                    path.write_text(yaml.safe_dump({"tabs": [{"id": "tanks", "root": node}]}))
+                    with self.assertRaises(ValueError):
+                        load_dashboard(path, root)
+            for settings in ({}, {"segments": 1}, {"segments": 4}, {"segments": 20}):
+                node = {"type": "tank", "topic": "rv/tanks", "payload_path": "fresh", **settings}
+                path.write_text(yaml.safe_dump({"tabs": [{"id": "tanks", "root": node}]}))
+                load_dashboard(path, root)
+
     def test_shipped_dashboard_example_uses_valid_feature_settings(self) -> None:
         repository = Path(__file__).resolve().parents[2]
         dashboard, tab_topics = load_dashboard(

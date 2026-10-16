@@ -15,7 +15,7 @@ from .dashboard import BOUND, CONTAINERS, is_finite_number, load_dashboard
 
 
 MISSING = object()
-NUMERIC_WIDGETS = {"gauge", "dial", "numeric", "sparkline"}
+NUMERIC_WIDGETS = {"gauge", "dial", "numeric", "sparkline", "tank"}
 
 
 def resolve_payload_path(payload: Any, path: str) -> Any:

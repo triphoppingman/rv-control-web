@@ -28,6 +28,60 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 
 
 class FakeMqttTests(unittest.TestCase):
+    def test_tank_scenario_generates_independent_discrete_levels(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            dashboard_path = root / "dashboard.yaml"
+            dashboard_path.write_text(yaml.safe_dump({
+                "tabs": [{"id": "tanks", "root": {
+                    "type": "flow",
+                    "children": [
+                        {"type": "tank", "label": label, "topic": "rv/tanks",
+                         "payload_path": field, "min": 0, "max": 3, "segments": 3}
+                        for label, field in (
+                            ("Fresh water", "fresh_level"),
+                            ("Gray water", "gray_level"),
+                            ("Black water", "black_level"),
+                        )
+                    ],
+                }}],
+            }))
+            config = root / "config.yaml"
+            config.write_text("dashboard_file: dashboard.yaml\n")
+            scenarios = load_scenarios(REPOSITORY / "fake-mqtt.example.yaml", config)
+            dashboard, _ = load_dashboard(dashboard_path, root)
+            self.assertEqual(set(scenarios), {"rv/tanks"})
+            self.assertEqual(scenarios["rv/tanks"].interval_s, 2)
+            self.assertTrue(scenarios["rv/tanks"].retain)
+            expected = {
+                0: (3, 0, 0), 10: (2, 0, 0), 15: (2, 1, 0),
+                20: (1, 1, 1), 30: (0, 2, 1), 40: (3, 2, 2),
+                60: (1, 0, 3), 80: (3, 1, 0),
+            }
+            for elapsed, levels in expected.items():
+                with self.subTest(elapsed=elapsed):
+                    samples = sample_payloads(scenarios, elapsed)
+                    self.assertEqual(tuple(samples["rv/tanks"].values()), levels)
+                    self.assertTrue(all(type(value) is int for value in samples["rv/tanks"].values()))
+                    self.assertEqual(validate_samples(dashboard, samples, {"rv/tanks"}), [])
+            output = StringIO()
+            with redirect_stdout(output), patch("backend.app.fake_mqtt.aiomqtt.Client") as client:
+                main(["--scenario", str(REPOSITORY / "fake-mqtt.example.yaml"),
+                      "--dashboard-config", str(config), "--check"])
+            client.assert_not_called()
+            self.assertEqual(json.loads(output.getvalue()), sample_payloads(scenarios))
+
+    def test_tank_scenario_rejects_invalid_later_sequence_values(self) -> None:
+        for invalid in ("full", None, True):
+            with self.subTest(invalid=invalid), TemporaryDirectory() as directory:
+                paths = self.make_config(Path(directory), {
+                    "sensors": [{"value": {
+                        "generator": "sequence", "values": [0, invalid], "hold_s": 10,
+                    }}],
+                }, node_type="tank")
+                with self.assertRaisesRegex(ValueError, "invalid binding values"):
+                    load_scenarios(*paths)
+
     def test_obd_example_matches_active_pid_payload(self) -> None:
         dashboard, tab_topics = load_dashboard(
             REPOSITORY / "dashboard.example.yaml", REPOSITORY / "assets"

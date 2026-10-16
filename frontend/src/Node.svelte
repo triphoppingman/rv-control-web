@@ -2,6 +2,7 @@
   import Dial from './Dial.svelte';
   import Gauge from './Gauge.svelte';
   import Sparkline from './Sparkline.svelte';
+  import Tank from './Tank.svelte';
   import Map from './Map.svelte';
 
   // The same component recurses through layout containers and renders leaf widgets.
@@ -26,7 +27,7 @@
     }) : String(value);
   }
 
-  function calculateDerived(node) {
+  function calculateDerived(node, values, now, staleAfter) {
     const readings = node.inputs.map((input) => {
       const record = values[input.topic];
       const value = extract(record?.payload, input.payload_path);
@@ -59,11 +60,12 @@
 
   // Svelte recomputes these states as telemetry or the shared clock changes.
   $: record = values[node.topic];
-  $: derived = node.type === 'derived' ? calculateDerived(node) : null;
+  $: derived = node.type === 'derived' ? calculateDerived(node, values, now, staleAfter) : null;
   $: value = node.type === 'derived' ? derived.value : extract(record?.payload, node.payload_path);
   $: missing = node.type === 'derived' ? derived.missing : value === undefined || value === null;
   $: stale = node.type === 'derived' ? derived.stale : !missing && now - record.ts * 1000 > (node.stale_after_ms ?? staleAfter);
-  $: invalid = node.type === 'derived' && derived.invalid;
+  $: invalid = node.type === 'derived' ? derived.invalid : node.type === 'tank' && !missing
+    && (typeof value !== 'number' || !Number.isFinite(value));
   // The highest threshold at or below the reading determines its color.
   $: active = node.thresholds?.filter((threshold) => Number(value) >= threshold.at)
     .sort((left, right) => right.at - left.at)[0];
@@ -81,7 +83,7 @@
         <svelte:self node={child} {values} {now} {staleAfter} {theme} />
       {/each}
     </div>
-  {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline', 'derived'].includes(node.type)}
+  {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline', 'derived', 'tank'].includes(node.type)}
     <div class="widget {node.type}" class:stale style="--accent:{accent}; --span:{node.span || 12}; --min-width:{node.min_width || 'auto'}">
       <div class="widget-top"><span class="widget-label">{node.label || node.payload_path || node.operation}</span><span class="state" class:offline={missing || stale || invalid}>{state}</span></div>
       {#if node.type === 'boolean'}
@@ -96,6 +98,9 @@
         {:else if node.type === 'gauge'}
           <Gauge value={missing ? null : Number(value)} min={node.min ?? 0} max={node.max ?? 100}
             color={accent} {theme} />
+        {:else if node.type === 'tank'}
+          <Tank value={missing || invalid ? null : value} min={node.min ?? 0} max={node.max ?? 100}
+            segments={node.segments ?? 3} label={node.label || node.payload_path} />
         {:else if node.type === 'sparkline'}
           <Sparkline value={missing ? null : Number(value)} min={node.min ?? 0} max={node.max ?? 100} color={accent}
             {theme}

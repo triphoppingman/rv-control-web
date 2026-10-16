@@ -7,6 +7,7 @@ import '../src/style.css';
 const fixture = document.querySelector('#fixture');
 const results = document.querySelector('#results');
 const checks = [];
+const skipped = [];
 let widget;
 
 function assert(condition, message) {
@@ -90,10 +91,17 @@ try {
     && chart().getOption().series[0].areaStyle.opacity === 0.22,
   'Theme updates preserve history without extra samples');
   const previousChart = chart();
-  fixture.style.width = '320px';
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  assert(chart().getWidth() === fixture.querySelector('.chart').clientWidth,
-    'Chart follows container resizing');
+  if (document.visibilityState === 'visible') {
+    fixture.style.width = '320px';
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (chart().getWidth() === fixture.querySelector('.chart').clientWidth) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert(chart().getWidth() === fixture.querySelector('.chart').clientWidth,
+      'Chart follows container resizing');
+  } else {
+    skipped.push('Container resizing requires a visible browser tab (ResizeObserver is throttled when hidden)');
+  }
   await render({ ...binding, type: 'sparkline', sample_interval_ms: 0 }, 50, 5);
   assert(previousChart.isDisposed(), 'Unmount disposes the ECharts instance');
   assert(chart().getOption().series[0].data.join() === '50', 'Remount clears sparkline history');
@@ -101,7 +109,105 @@ try {
   assert(chart().getOption().series[0].data.join() === '50,51',
     'Zero sample interval accepts every newer timestamp');
 
-  results.textContent = `PASS: ${checks.length} checks\n${checks.join('\n')}`;
+  await render({
+    type: 'derived', operation: 'difference', label: 'PV-to-battery voltage delta',
+    inputs: [
+      { topic: 'solar', payload_path: 'pv_voltage' },
+      { topic: 'solar', payload_path: 'battery_voltage' },
+    ],
+  }, null);
+  assert(fixture.textContent.includes('No data'), 'Derived widget starts without data');
+  widget.$set({
+    values: { solar: { payload: { pv_voltage: 13.4, battery_voltage: 13.5 }, ts: 10 } },
+    now: 10000,
+  });
+  await tick();
+  assert(fixture.querySelector('.state').textContent === 'Live'
+    && fixture.querySelector('.reading').textContent === (-0.1).toLocaleString(undefined, {
+      minimumFractionDigits: 0, maximumFractionDigits: 1,
+    }), 'Derived widget recalculates when telemetry arrives after mounting');
+  widget.$set({ now: 21000 });
+  await tick();
+  assert(fixture.querySelector('.state').textContent === 'Stale',
+    'Derived widget becomes stale as the clock advances');
+  widget.$set({ staleAfter: 30000 });
+  await tick();
+  assert(fixture.querySelector('.state').textContent === 'Live',
+    'Derived widget responds to staleness setting changes');
+  widget.$set({
+    values: { solar: { payload: { pv_voltage: 15, battery_voltage: 13 }, ts: 21 } },
+  });
+  await tick();
+  assert(fixture.querySelector('.reading').textContent === '2',
+    'Derived widget recalculates subsequent telemetry');
+
+  const tank = { ...binding, type: 'tank', label: 'Fresh water', min: 0, max: 3, segments: 3 };
+  await render(tank, 0);
+  assert(fixture.querySelectorAll('.tank-segment').length === 3
+    && fixture.querySelectorAll('.tank-segment.filled').length === 0, 'Tank zero is empty');
+  for (const level of [1, 2, 3]) {
+    await reading(level, level + 1);
+    assert(fixture.querySelectorAll('.tank-segment.filled').length === level,
+      `Tank level ${level}/3 fills ${level} segments`);
+  }
+  assert(getComputedStyle(fixture.querySelector('.tank-bar')).flexDirection === 'column-reverse',
+    'Tank fills bottom to top');
+  const meter = fixture.querySelector('[role="meter"]');
+  assert(meter.getAttribute('aria-label') === 'Fresh water'
+    && meter.getAttribute('aria-valuenow') === '3', 'Tank exposes an accessible numeric meter');
+  await reading(-1, 5);
+  assert(fixture.querySelectorAll('.tank-segment.filled').length === 0
+    && fixture.querySelector('.reading').textContent === '-1', 'Tank clamps low fill without altering the reading');
+  await reading(4, 6);
+  assert(fixture.querySelectorAll('.tank-segment.filled').length === 3,
+    'Tank clamps high fill to full');
+  await reading(null, 7);
+  assert(fixture.querySelector('.state').textContent === 'No data'
+    && fixture.querySelectorAll('.tank-segment.filled').length === 0
+    && !meter.hasAttribute('aria-valuenow'), 'Missing tank data is not represented as a valid empty reading');
+  for (const value of ['2', true, NaN, Infinity]) {
+    await reading(value, 8);
+    assert(fixture.querySelector('.state').textContent === 'Invalid input'
+      && fixture.querySelector('.reading').textContent === '--'
+      && fixture.querySelectorAll('.tank-segment.filled').length === 0,
+    `Tank rejects invalid value ${String(value)}`);
+  }
+  await render({ ...tank, min: 10, max: 110, segments: 4 }, 60);
+  assert(fixture.querySelectorAll('.tank-segment.filled').length === 2,
+    'Tank supports four segments and nonzero minimum');
+  await render({ ...binding, type: 'tank', thresholds: [{ at: 50, color: 'blue' }] }, 67);
+  assert(fixture.querySelectorAll('.tank-segment.filled').length === 2,
+    'Default tank range maps percentage readings to thirds');
+  assert(getComputedStyle(fixture.querySelector('.tank-segment.filled')).backgroundColor === 'rgb(50, 117, 164)',
+    'Tank uses existing threshold colors');
+  widget.$set({ now: 12000 });
+  await tick();
+  assert(fixture.querySelector('.state').textContent === 'Stale', 'Tank reports stale telemetry');
+  document.documentElement.setAttribute('data-theme', 'dark');
+  assert(getComputedStyle(fixture.querySelector('.tank-segment:not(.filled)')).backgroundColor === 'rgb(28, 46, 40)',
+    'Empty tank segments follow the dark theme');
+  document.documentElement.removeAttribute('data-theme');
+
+  const tankNames = ['Fresh water', 'Grey water', 'Black water'];
+  await render({
+    type: 'flow',
+    children: tankNames.map((label, index) => ({
+      type: 'tank', label, topic: 'test', payload_path: `tanks[${index}]`,
+      min: 0, max: 3, segments: 3, min_width: '160px',
+    })),
+  }, null);
+  widget.$set({ values: { test: { payload: { tanks: [3, 1, 2] }, ts: 1 } } });
+  await tick();
+  const tanks = [...fixture.querySelectorAll('.widget.tank')];
+  assert(tanks.length === 3 && tanks.every((element, index) =>
+    element.querySelector('.widget-label').textContent === tankNames[index]
+    && element.querySelector('[role="meter"]').getAttribute('aria-label') === tankNames[index]),
+  'Multiple tanks each display their own visible and accessible label');
+  assert(tanks.map((element) => element.querySelectorAll('.tank-segment.filled').length).join() === '3,1,2',
+    'Multiple tanks independently bind to their own levels');
+
+  results.textContent = `PASS: ${checks.length} checks\n${checks.join('\n')}`
+    + (skipped.length ? `\nSKIPPED: ${skipped.join('; ')}` : '');
 } catch (error) {
   results.textContent = `FAIL: ${error.stack}\nPassed checks:\n${checks.join('\n')}`;
   throw error;

@@ -57,6 +57,13 @@ and PID definitions before using these bindings with a different installation.
 
 The scenario also defines `rv/wled/patio` for dashboards with lighting widgets.
 It is not published when the selected dashboard does not reference it.
+It also defines `rv/tanks` with independent integer sequences for
+`fresh_level`, `gray_level`, and `black_level`. Fresh cycles 3, 2, 1, 0 every
+10 seconds per step; gray and black cycle 0, 1, 2, 3 with 15- and 20-second
+steps respectively. The topic publishes every two seconds with retention.
+These synthetic levels exercise empty, thirds, and full states, not physical
+tank behavior. Tank telemetry is selected only when the chosen test dashboard
+binds to `rv/tanks`; no tanks are added to the live dashboard.
 The publisher selects topics across **all** dashboard tabs; the application
 streams only the active tab's topics to each viewer.
 
@@ -296,6 +303,87 @@ dial centered on 120 V at the top, use `min: 90` and `max: 150` (the midpoint
 of the symmetric needle sweep is 120). This changes the displayed scale only,
 not the telemetry value or protection settings.
 
+## Segmented tank levels
+
+Use `type: tank` for a vertical bar that fills from bottom to top:
+
+```yaml
+type: tank
+label: Fresh water
+topic: rv/tanks
+payload_path: fresh_level
+min: 0
+max: 3
+segments: 3
+decimals: 0
+```
+
+This illustrative binding maps numeric values 0, 1, 2, 3 to empty, one-third,
+two-thirds, and full. Replace the topic and field with your captured MQTT
+payload; the widget consumes one numeric level, not separate sensor booleans.
+For quarter increments, use `max: 4` and `segments: 4`. Percentage readings
+can use `min: 0`, `max: 100`, and either segment count.
+
+Every tank is a separate widget with its own `label`, topic, field, and range.
+For example, place these widgets in an existing tab's layout to show three
+tanks side by side (using illustrative fields):
+
+```yaml
+type: flow
+children:
+  - type: tank
+    label: Fresh water
+    topic: rv/tanks
+    payload_path: fresh_level
+    max: 3
+    segments: 3
+    min_width: 160px
+  - type: tank
+    label: Gray water
+    topic: rv/tanks
+    payload_path: gray_level
+    max: 3
+    segments: 3
+    min_width: 160px
+  - type: tank
+    label: Black water
+    topic: rv/tanks
+    payload_path: black_level
+    max: 3
+    segments: 3
+    min_width: 160px
+```
+
+The label appears above each bar and is also its screen-reader label.
+Tanks can share a topic with separate payload fields or use different topics.
+To test this layout, add it to a separate test dashboard, point a test runtime
+config's `dashboard_file` at that file, and pass that config to the faker:
+
+```sh
+backend/.venv/bin/python -m backend.app.fake_mqtt \
+  --scenario fake-mqtt.example.yaml --dashboard-config /path/to/test-config.yaml --check
+```
+
+Remove `--check` to publish to the local test broker. The faker still selects
+only the dashboard topics and validates all generated tank sequence values as
+numeric before connecting. The selected config does not change the faker's
+broker; keep production dashboards and brokers out of this test workflow.
+
+Defaults are `min: 0`, `max: 100`, and `segments: 3`. Bounds must be finite
+numbers with `min < max`; segment count must be an integer from 1 to 20.
+The normalized value is rounded to the nearest whole segment. Values outside
+the scale clamp the bar to empty/full while preserving the actual numeric
+reading below it. No-data and invalid readings leave the bar unfilled with
+an explicit status, rather than claiming a valid empty tank.
+
+Standard `unit`, `decimals`, `thresholds`, `stale_after_ms`, and layout settings
+apply. Thresholds color the filled segments; no warning zones are assumed.
+Empty segments and labels follow the selected theme. The bar uses CSS, not
+an additional charting dependency.
+
+The browser checks at `/tests/charts.html` also cover tank increments,
+clamping, missing/invalid readings, themes, thresholds, and stale status.
+
 ## Browser-only trends
 
 Chart rendering is split into `Dial.svelte` (needle instruments),
@@ -309,7 +397,10 @@ To run the chart component regression checks, start the frontend with
 <http://127.0.0.1:5173/tests/charts.html>. The page reports PASS or FAIL for
 needle scales and warnings, arc gauges, live updates, themes, sparkline
 sampling/history, resizing, and cleanup. These checks mount real components
-with synthetic readings; no backend or MQTT broker is needed.
+with synthetic readings and also verify derived readings update when telemetry
+arrives and become stale as time advances; no backend or MQTT broker is needed.
+Keep the test tab visible to exercise container resizing; that check is
+explicitly reported as skipped when the tab is hidden.
 
 Add `type: sparkline` with ordinary `topic` and `payload_path` bindings:
 

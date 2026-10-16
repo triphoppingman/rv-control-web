@@ -753,8 +753,13 @@ Static content must never be rendered as raw HTML.
 
 - **Containers:** `grid`, `row`, `column`, `stack`, `card`
 - **Bound widgets:** `gauge`, `dial`, `numeric`, `boolean`, `sparkline`,
-  `derived`
+  `derived`, `tank`
 - **Static widgets:** `text`, `image`, `icon`, `divider`, `spacer`
+
+`tank` renders a bottom-up segmented vertical bar from a single numeric
+binding. It supports configurable `min`, `max`, and `segments` (default
+0, 100, and 3), plus standard formatting, thresholds, and stale/no-data
+states. See the testing guide for sensor-increment examples.
 
 ## 15. Responsive and Layout Model
 

@@ -22,7 +22,7 @@ DashboardLoader.add_implicit_resolver(
 
 
 CONTAINERS = {"grid", "row", "column", "stack", "card", "flow"}
-BOUND = {"gauge", "dial", "numeric", "boolean", "sparkline"}
+BOUND = {"gauge", "dial", "numeric", "boolean", "sparkline", "tank"}
 DERIVED_OPERATIONS = {"sum", "difference", "product", "ratio", "average"}
 STATIC = {"text", "image", "icon", "divider", "spacer"}
 MAP_ORIENTATIONS = {"north_up", "heading_up"}
@@ -91,7 +91,7 @@ def validate_node(
         for field in ("topic", "payload_path"):
             if not isinstance(node.get(field), str) or not node[field].strip():
                 raise ValueError(f"{location}: {field} is required")
-        if kind in {"gauge", "dial", "sparkline"}:
+        if kind in {"gauge", "dial", "sparkline", "tank"}:
             minimum = node.get("min", 0)
             maximum = node.get("max", 100)
             if (
@@ -104,6 +104,10 @@ def validate_node(
                 warning = node["low_warning_below"]
                 if not is_finite_number(warning) or not minimum < warning < maximum:
                     raise ValueError(f"{location}: low_warning_below must be a finite number between min and max")
+        if kind == "tank":
+            segments = node.get("segments", 3)
+            if isinstance(segments, bool) or not isinstance(segments, int) or not 1 <= segments <= 20:
+                raise ValueError(f"{location}: segments must be an integer from 1 to 20")
         if kind == "sparkline":
             history_points = node.get("history_points", 60)
             if isinstance(history_points, bool) or not isinstance(history_points, int) or not 2 <= history_points <= 1000:
