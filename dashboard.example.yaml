@@ -97,67 +97,157 @@ tabs:
   - id: coach
     label: Coach
     root:
-      type: grid
-      cols: 5
+      type: column
       children:
-        - type: tank
-          label: Fresh water
-          span: 1
-          topic: rv/coach/entity/fresh_tank
-          payload_path: state.level
-          unit: "%"
-          min: 0
-          max: 100
-          segments: 3
-          decimals: 0
-        - type: tank
-          label: Gray
-          span: 1
-          topic: rv/coach/entity/gray_tank
-          payload_path: state.level
-          unit: "%"
-          min: 0
-          max: 100
-          segments: 3
-          decimals: 0
-        - type: tank
-          label: Black
-          span: 1
-          topic: rv/coach/entity/black_tank
-          payload_path: state.level
-          unit: "%"
-          min: 0
-          max: 100
-          segments: 3
-          decimals: 0
-        - type: tank
-          label: Black 2
-          span: 1
-          topic: rv/coach/entity/black2_tank
-          payload_path: state.level
-          unit: "%"
-          min: 0
-          max: 100
-          segments: 3
-          decimals: 0
-        - type: tank
-          label: LPG
-          span: 1
-          topic: rv/coach/entity/lpg_tank
-          payload_path: state.level
-          unit: "%"
-          min: 0
-          max: 100
-          segments: 10
-          decimals: 0
+        - type: card
+          title: Tank Levels
+          children:
+            - type: grid
+              cols: 5
+              children:
+                - type: tank
+                  label: Fresh water
+                  span: 1
+                  topic: rv/coach/entity/fresh_tank
+                  payload_path: state.level
+                  unit: "%"
+                  min: 0
+                  max: 100
+                  segments: 3
+                  decimals: 0
+                - type: tank
+                  label: Gray
+                  span: 1
+                  topic: rv/coach/entity/gray_tank
+                  payload_path: state.level
+                  unit: "%"
+                  min: 0
+                  max: 100
+                  segments: 3
+                  decimals: 0
+                - type: tank
+                  label: Black
+                  span: 1
+                  topic: rv/coach/entity/black_tank
+                  payload_path: state.level
+                  unit: "%"
+                  min: 0
+                  max: 100
+                  segments: 3
+                  decimals: 0
+                - type: tank
+                  label: Black 2
+                  span: 1
+                  topic: rv/coach/entity/black2_tank
+                  payload_path: state.level
+                  unit: "%"
+                  min: 0
+                  max: 100
+                  segments: 3
+                  decimals: 0
+                - type: tank
+                  label: LPG
+                  span: 1
+                  topic: rv/coach/entity/lpg_tank
+                  payload_path: state.level
+                  unit: "%"
+                  min: 0
+                  max: 100
+                  segments: 10
+                  decimals: 0
         - type: card
           title: Lights
-          span: 5
           children:
-            - type: light
-              label: Living ceiling
-              topic: rv/coach/entity/living_ceiling_light
-              payload_path: state
+            - type: grid
+              cols: 3
+              children:
+                - type: card
+                  title: Entry
+                  span: 1
+                  children:
+                    - type: light
+                      label: Cargo
+                      topic: rv/coach/entity/cargo_light
+                      payload_path: state
+                    - type: light
+                      label: Step
+                      topic: rv/coach/entity/step_light
+                      payload_path: state
+                    - type: light
+                      label: Awning
+                      topic: rv/coach/entity/awning_light
+                      payload_path: state
+                - type: card
+                  title: Main
+                  span: 1
+                  children:
+                    - type: light
+                      label: Living Ceiling
+                      topic: rv/coach/entity/living_ceiling_light
+                      payload_path: state
+                    - type: light
+                      label: Hall
+                      topic: rv/coach/entity/hall_light
+                      payload_path: state
+                    - type: light
+                      label: Dinette
+                      topic: rv/coach/entity/dinette_light
+                      payload_path: state
+                    - type: light
+                      label: Kitchen
+                      topic: rv/coach/entity/kitchen_light
+                      payload_path: state
+                    - type: light
+                      label: Sofa
+                      topic: rv/coach/entity/sofa_light
+                      payload_path: state
+                    - type: light
+                      label: Accent
+                      topic: rv/coach/entity/accent_light
+                      payload_path: state
+                - type: card
+                  title: Rear
+                  span: 1
+                  children:
+                    - type: light
+                      label: Bedroom ceiling
+                      topic: rv/coach/entity/bedroom_ceiling_light
+                      payload_path: state
+                    - type: light
+                      label: Rear Bath
+                      topic: rv/coach/entity/rear_bath_light
+                      payload_path: state
+                    - type: light
+                      label: Mid Bath
+                      topic: rv/coach/entity/mid_bath_light
+                      payload_path: state
+                    - type: light
+                      label: Vanity
+                      topic: rv/coach/entity/vanity_light
+                      payload_path: state
+        - type: card
+          title: Fans
+          children:
+            - type: grid
+              cols: 3
+              children:
+                - type: fan
+                  label: Kitchen
+                  span: 1
+                  topic: rv/coach/entity/kitchen_fan
+                  payload_path: state
+                  lid_topic: rv/coach/entity/kitchen_fan_lid
+                  lid_payload_path: state
+                - type: fan
+                  label: Mid Bath
+                  span: 1
+                  topic: rv/coach/entity/mid_bath_fan
+                  payload_path: state
+                - type: fan
+                  label: Rear Bath
+                  span: 1
+                  topic: rv/coach/entity/rear_bath_fan
+                  payload_path: state
   - id: obd2
     label: OBD2
     root:

@@ -22,7 +22,7 @@ DashboardLoader.add_implicit_resolver(
 
 
 CONTAINERS = {"grid", "row", "column", "stack", "card", "flow"}
-BOUND = {"gauge", "dial", "numeric", "boolean", "sparkline", "tank", "light"}
+BOUND = {"gauge", "dial", "numeric", "boolean", "sparkline", "tank", "light", "fan"}
 DERIVED_OPERATIONS = {"sum", "difference", "product", "ratio", "average"}
 STATIC = {"text", "image", "icon", "divider", "spacer"}
 MAP_ORIENTATIONS = {"north_up", "heading_up"}
@@ -75,6 +75,13 @@ def validate_node(
     if "show_warning" in node:
         if kind != "dial" or not isinstance(node["show_warning"], bool):
             raise ValueError(f"{location}: show_warning must be a boolean on a dial widget")
+    if "lid_topic" in node or "lid_payload_path" in node:
+        if kind != "fan":
+            raise ValueError(f"{location}: lid bindings are only supported for fan widgets")
+        for field in ("lid_topic", "lid_payload_path"):
+            if not isinstance(node.get(field), str) or not node[field].strip():
+                raise ValueError(f"{location}: {field} is required for a lid binding")
+        topics.add(node["lid_topic"])
     node_id = node.get("id")
     if node_id is not None:
         if not isinstance(node_id, str) or not node_id or node_id in seen_nodes:

@@ -11,6 +11,7 @@ import yaml
 
 from backend.app.check_dashboard import (
     MISSING,
+    iter_bindings,
     iter_nodes,
     main as check_dashboard,
     resolve_payload_path,
@@ -20,6 +21,121 @@ from backend.app.dashboard import load_dashboard
 
 
 class DashboardFeatureTests(unittest.TestCase):
+    def test_coach_fans_and_lid_subscription(self) -> None:
+        repository = Path(__file__).resolve().parents[2]
+        dashboard, topics = load_dashboard(
+            repository / "dashboard.example.yaml", repository / "assets"
+        )
+        coach = next(tab for tab in dashboard["tabs"] if tab["id"] == "coach")
+        group = coach["root"]["children"][2]
+        self.assertEqual(group["title"], "Fans")
+        fans = group["children"][0]["children"]
+        self.assertEqual([node["label"] for node in fans], ["Kitchen", "Mid Bath", "Rear Bath"])
+        self.assertEqual(
+            [node["topic"] for node in fans],
+            [f"rv/coach/entity/{name}_fan" for name in ("kitchen", "mid_bath", "rear_bath")],
+        )
+        kitchen = fans[0]
+        self.assertEqual(list(iter_bindings(kitchen)), [
+            ("rv/coach/entity/kitchen_fan", "state", False),
+            ("rv/coach/entity/kitchen_fan_lid", "state", False),
+        ])
+        self.assertIn(kitchen["lid_topic"], topics["coach"])
+        self.assertTrue(all(node["type"] == "fan" for node in fans))
+
+    def test_fan_and_lid_configuration_and_samples(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "dashboard.yaml"
+            node = {
+                "type": "fan", "topic": "fan", "payload_path": "state",
+                "lid_topic": "lid", "lid_payload_path": "state",
+            }
+            path.write_text(yaml.safe_dump({"tabs": [{"id": "coach", "root": node}]}))
+            dashboard, topics = load_dashboard(path, root)
+            self.assertEqual(topics["coach"], {"fan", "lid"})
+            idle = {"open_active": False, "close_active": False}
+            for fan in (True, False, {"on": True}, {"on": False, "level": 100}):
+                for lid in (
+                    idle,
+                    {"open_active": True, "close_active": False, "open_remaining": 15},
+                    {"open_active": False, "close_active": True, "close_remaining": 0},
+                    {**idle, "open_remaining": None, "close_remaining": None},
+                ):
+                    with self.subTest(fan=fan, lid=lid):
+                        self.assertEqual(validate_samples(dashboard, {
+                            "fan": {"state": fan}, "lid": {"state": lid},
+                        }, {"fan", "lid"}), [])
+            for lid in (
+                None, {}, {"open_active": True}, {"open_active": 1, "close_active": False},
+                {"open_active": True, "close_active": True},
+                {**idle, "open_remaining": -1}, {**idle, "close_remaining": "15"},
+                {**idle, "open_remaining": True}, {**idle, "open_remaining": float("inf")},
+            ):
+                with self.subTest(lid=lid):
+                    self.assertTrue(validate_samples(dashboard, {
+                        "fan": {"state": {"on": True}}, "lid": {"state": lid},
+                    }, {"fan", "lid"}))
+            for fan in (None, 1, "on", [], {}, {"on": 1}):
+                with self.subTest(fan=fan):
+                    self.assertTrue(validate_samples(dashboard, {
+                        "fan": {"state": fan}, "lid": {"state": idle},
+                    }, {"fan", "lid"}))
+            for settings in (
+                {"lid_topic": None}, {"lid_payload_path": ""}, {"type": "light"},
+            ):
+                path.write_text(yaml.safe_dump({"tabs": [{"id": "coach", "root": {
+                    **node, **settings,
+                }}]}))
+                with self.subTest(settings=settings), self.assertRaises(ValueError):
+                    load_dashboard(path, root)
+
+    def test_coach_light_groups(self) -> None:
+        repository = Path(__file__).resolve().parents[2]
+        expected = {
+            "Entry": [
+                ("Cargo", "cargo"), ("Step", "step"), ("Awning", "awning"),
+            ],
+            "Main": [
+                ("Living Ceiling", "living_ceiling"), ("Hall", "hall"),
+                ("Dinette", "dinette"), ("Kitchen", "kitchen"),
+                ("Sofa", "sofa"), ("Accent", "accent"),
+            ],
+            "Rear": [
+                ("Bedroom ceiling", "bedroom_ceiling"), ("Rear Bath", "rear_bath"),
+                ("Mid Bath", "mid_bath"), ("Vanity", "vanity"),
+            ],
+        }
+        for filename in ("dashboard.example.yaml", "dashboard.yaml"):
+            path = repository / filename
+            if not path.exists():
+                continue
+            with self.subTest(filename=filename):
+                dashboard, topics = load_dashboard(path, repository / "assets")
+                coach = next(tab for tab in dashboard["tabs"] if tab["id"] == "coach")
+                groups = coach["root"]["children"]
+                self.assertEqual([group["title"] for group in groups], ["Tank Levels", "Lights", "Fans"])
+                self.assertTrue(all(group["type"] == "card" for group in groups))
+                layout = groups[1]["children"][0]
+                self.assertEqual(layout["type"], "grid")
+                self.assertEqual(layout["cols"], 3)
+                self.assertEqual([card["title"] for card in layout["children"]], list(expected))
+                for card in layout["children"]:
+                    self.assertEqual(card["type"], "card")
+                    lights = card["children"]
+                    self.assertEqual(
+                        [(node["label"], node["topic"]) for node in lights],
+                        [(label, f"rv/coach/entity/{entity}_light")
+                         for label, entity in expected[card["title"]]],
+                    )
+                    for node in lights:
+                        self.assertEqual(node["type"], "light")
+                        self.assertEqual(node["payload_path"], "state")
+                        self.assertIn(node["topic"], topics["coach"])
+                tanks = groups[0]["children"][0]["children"]
+                self.assertEqual(len(tanks), 5)
+                self.assertTrue(all(node["type"] == "tank" for node in tanks))
+
     def test_light_configuration_and_samples(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

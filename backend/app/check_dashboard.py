@@ -64,6 +64,8 @@ def iter_bindings(node: dict[str, Any]):
                 yield topic, node[opt_field], True
     elif node.get("type") in BOUND:
         yield node["topic"], node["payload_path"], node["type"] in NUMERIC_WIDGETS
+        if node["type"] == "fan" and "lid_topic" in node:
+            yield node["lid_topic"], node["lid_payload_path"], False
 
 
 def calculate_derived(operation: str, inputs: list[int | float]) -> int | float | None:
@@ -118,6 +120,30 @@ def validate_samples(
                     errors.append(
                         f"{location}: topic {topic!r} payload_path {path!r} must resolve to a finite number"
                     )
+                elif node.get("type") == "fan":
+                    if topic == node.get("lid_topic") and path == node.get("lid_payload_path"):
+                        valid = (
+                            isinstance(value, dict)
+                            and isinstance(value.get("open_active"), bool)
+                            and isinstance(value.get("close_active"), bool)
+                            and not (value["open_active"] and value["close_active"])
+                            and all(
+                                value.get(field) is None or (
+                                    is_finite_number(value[field]) and value[field] >= 0
+                                )
+                                for field in ("open_remaining", "close_remaining")
+                            )
+                        )
+                        requirement = "a lid state with boolean open_active/close_active and nonnegative remaining times"
+                    else:
+                        valid = isinstance(value, bool) or (
+                            isinstance(value, dict) and isinstance(value.get("on"), bool)
+                        )
+                        requirement = "a boolean or a fan state with boolean on"
+                    if not valid:
+                        errors.append(
+                            f"{location}: topic {topic!r} payload_path {path!r} must resolve to {requirement}"
+                        )
                 elif node.get("type") == "light":
                     valid = isinstance(value, bool) or (
                         isinstance(value, dict)

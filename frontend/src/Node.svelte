@@ -4,6 +4,7 @@
   import Sparkline from './Sparkline.svelte';
   import Tank from './Tank.svelte';
   import Light from './Light.svelte';
+  import Fan from './Fan.svelte';
   import Map from './Map.svelte';
 
   // The same component recurses through layout containers and renders leaf widgets.
@@ -72,9 +73,14 @@
   $: derived = node.type === 'derived' ? calculateDerived(node, values, now, staleAfter) : null;
   $: value = node.type === 'derived' ? derived.value : extract(record?.payload, node.payload_path);
   $: missing = node.type === 'derived' ? derived.missing : value === undefined || value === null;
+  $: lidRecord = node.type === 'fan' && node.lid_topic ? values[node.lid_topic] : null;
+  $: lid = extract(lidRecord?.payload, node.lid_payload_path);
+  $: lidStale = !!lidRecord && now - lidRecord.ts * 1000 > (node.stale_after_ms ?? staleAfter);
   $: stale = node.type === 'derived' ? derived.stale : !missing && now - record.ts * 1000 > (node.stale_after_ms ?? staleAfter);
   $: invalid = node.type === 'derived' ? derived.invalid : !missing && (
-    node.type === 'light' ? invalidLight(value) : node.type === 'tank'
+    node.type === 'light' ? invalidLight(value) : node.type === 'fan'
+      ? typeof value !== 'boolean' && (typeof value !== 'object' || Array.isArray(value) || typeof value.on !== 'boolean')
+      : node.type === 'tank'
       && (typeof value !== 'number' || !Number.isFinite(value)));
   // The highest threshold at or below the reading determines its color.
   $: active = node.thresholds?.filter((threshold) => Number(value) >= threshold.at)
@@ -93,10 +99,12 @@
         <svelte:self node={child} {values} {now} {staleAfter} {theme} />
       {/each}
     </div>
-  {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline', 'derived', 'tank', 'light'].includes(node.type)}
+  {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline', 'derived', 'tank', 'light', 'fan'].includes(node.type)}
     <div class="widget {node.type}" class:stale style="--accent:{accent}; --span:{node.span || 12}; --min-width:{node.min_width || 'auto'}">
       <div class="widget-top"><span class="widget-label">{node.label || node.payload_path || node.operation}</span><span class="state" class:offline={missing || stale || invalid}>{state}</span></div>
-      {#if node.type === 'light'}
+      {#if node.type === 'fan'}
+        <Fan value={missing || invalid ? null : value} showLid={!!node.lid_topic} {lid} {lidStale} />
+      {:else if node.type === 'light'}
         <Light value={missing || invalid ? null : value} />
       {:else if node.type === 'boolean'}
         <div class="boolean-value" class:on={!missing && (node.on_when === undefined ? !!value : value === node.on_when)}>

@@ -347,9 +347,52 @@ Missing values show No data; malformed states show Invalid input.
 Stale readings retain their last status with a Stale badge and muted display.
 There are no buttons, sliders, or MQTT commands.
 
-The live and example Coach tabs include a Living ceiling widget. Like the
-coach tanks, it requires real entity telemetry; the fake scenario does not
-currently supply that topic.
+The live and example Coach tabs have three parent cards: **Tank Levels**
+groups the five tanks, **Fans** shows three fans, and **Lights** groups the
+three read-only lighting cards:
+
+| Group | Lights |
+| --- | --- |
+| Entry | Cargo, Step, Awning |
+| Main | Living Ceiling, Hall, Dinette, Kitchen, Sofa, Accent |
+| Rear | Bedroom ceiling, Rear Bath, Mid Bath, Vanity |
+
+The cards appear side by side on larger screens and reflow on smaller screens.
+Each light binds to its own `rv/coach/entity/<entity>_light` topic and reads
+`state`. Awning uses `awning_light`, not the awning motor entity.
+Like the coach tanks, these require real entity telemetry; the fake scenario
+does not currently supply these topics.
+
+## Read-only fans and kitchen lid
+
+The Coach **Fans** card contains Kitchen, Mid Bath, and Rear Bath.
+Each `type: fan` widget reads a boolean or an object with boolean `on`
+from its own `rv/coach/entity/<entity>` topic. These are on/off load
+readings; the dimmer transport's `level` is not interpreted as fan speed.
+
+The kitchen fan also subscribes to its separate lid entity:
+
+```yaml
+type: fan
+label: Kitchen
+topic: rv/coach/entity/kitchen_fan
+payload_path: state
+lid_topic: rv/coach/entity/kitchen_fan_lid
+lid_payload_path: state
+```
+
+Specify both lid binding fields or neither. The lid state has boolean
+`open_active` and `close_active`, with optional nonnegative numeric
+`open_remaining` and `close_remaining` in seconds. Active open means
+**Raising**, active close means **Lowering**, and both false means **Idle**.
+Both active is invalid. Idle does not mean open or closed: the publisher
+reports motor activity, not lid position. Remaining time is the last reported
+value, not a browser countdown.
+
+Missing or partial lid telemetry shows **No data**, malformed telemetry shows
+**Invalid input**, and old lid telemetry has its own **Stale** badge independent
+of the fan's On/Off freshness. No raise/lower or fan controls are provided.
+The fake scenario does not supply these entity topics.
 
 ## Segmented tank levels
 

@@ -244,6 +244,60 @@ try {
   assert(!fixture.querySelector('button, input, [role="button"]'),
     'Light widget contains no controls');
 
+  const fan = { ...binding, type: 'fan', label: 'Kitchen',
+    lid_topic: 'lid', lid_payload_path: 'state' };
+  await render(fan, { on: true, level: 100 });
+  assert(fixture.querySelector('.fan-status.on')
+    && fixture.querySelector('.fan-status strong').textContent === 'On',
+  'Fan shows reported On status');
+  assert(fixture.querySelector('.fan-lid').textContent.includes('No data'),
+    'Missing kitchen lid does not imply closed');
+  async function lidState(state, ts = 1) {
+    widget.$set({ values: {
+      test: { payload: { value: { on: false } }, ts: 20 },
+      lid: { payload: { state }, ts },
+    }, now: ts * 1000 });
+    await tick();
+  }
+  await lidState({ open_active: true, close_active: false, open_remaining: 15 });
+  assert(fixture.querySelector('.fan-lid').textContent.includes('Raising')
+    && fixture.querySelector('.lid-remaining').textContent.includes('15s'),
+  'Kitchen reports raising and remaining time independently of fan Off');
+  await lidState({ open_active: false, close_active: true, close_remaining: 0 });
+  assert(fixture.querySelector('.fan-lid').textContent.includes('Lowering')
+    && fixture.querySelector('.lid-remaining').textContent.includes('0s'),
+  'Kitchen reports lowering including zero remaining time');
+  await lidState({ open_active: false, close_active: false });
+  assert(fixture.querySelector('.fan-lid').textContent.includes('Idle')
+    && !fixture.querySelector('.lid-remaining'), 'Idle lid does not invent an open/closed position');
+  await lidState({ open_active: true });
+  assert(fixture.querySelector('.fan-lid').textContent.includes('No data'),
+    'Partial lid state waits for both directions');
+  for (const state of [1, [], { open_active: true, close_active: true },
+    { open_active: false, close_active: false, open_remaining: -1 }]) {
+    await lidState(state);
+    assert(fixture.querySelector('.fan-lid').textContent.includes('Invalid input'),
+      `Lid rejects malformed or conflicting status ${JSON.stringify(state)}`);
+  }
+  await lidState({ open_active: true, close_active: false, open_remaining: 10 });
+  widget.$set({ now: 20000 });
+  await tick();
+  assert(fixture.querySelector('.fan-lid.stale')
+    && fixture.querySelector('.state').textContent === 'Live',
+  'Lid freshness is independent of fan freshness');
+  await render({ ...binding, type: 'fan' }, false);
+  assert(fixture.querySelector('.fan-status strong').textContent === 'Off'
+    && !fixture.querySelector('.fan-lid'), 'Ordinary fans need no lid binding');
+  await reading(null, 2);
+  assert(fixture.querySelector('.state').textContent === 'No data'
+    && fixture.querySelector('.fan-status strong').textContent === '--',
+  'Missing fan is not Off');
+  await reading({ on: 'false' }, 3);
+  assert(fixture.querySelector('.state').textContent === 'Invalid input',
+    'Fan rejects nonboolean On status');
+  assert(!fixture.querySelector('button, input, [role="button"]'),
+    'Fan and lid widgets are read-only');
+
   results.textContent = `PASS: ${checks.length} checks\n${checks.join('\n')}`
     + (skipped.length ? `\nSKIPPED: ${skipped.join('; ')}` : '');
 } catch (error) {
