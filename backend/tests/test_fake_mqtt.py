@@ -7,12 +7,15 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import yaml
 
 from backend.app.fake_mqtt import (
+    FanActionSimulator,
     TopicScenario,
+    consume_simulated_commands,
     load_scenarios,
     main,
     publish_forever,
@@ -28,6 +31,46 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 
 
 class FakeMqttTests(unittest.TestCase):
+    def test_fan_action_simulator_updates_fan_and_lid_telemetry(self) -> None:
+        simulator = FanActionSimulator()
+        initial = simulator.payloads(0)
+        self.assertFalse(initial["rv/coach/entity/kitchen_fan"]["state"]["on"])
+        self.assertEqual(
+            initial["rv/coach/entity/kitchen_fan_lid"]["state"],
+            {"open_active": False, "close_active": False},
+        )
+
+        request = {
+            "version": 1, "client_id": "rv-control-web", "request_id": "req-1",
+            "target": "kitchen_fan", "action": "on",
+        }
+        result, topic = simulator.handle(request, 1)
+        self.assertEqual(topic, "rv/coach/entity/kitchen_fan")
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(simulator.payloads(1)[topic]["state"], {"on": True})
+
+        request.update(request_id="req-2", target="kitchen_fan_lid", action="open")
+        result, topic = simulator.handle(request, 2)
+        self.assertEqual(topic, "rv/coach/entity/kitchen_fan_lid")
+        self.assertEqual(result["outcome"], "dispatched")
+        self.assertEqual(
+            simulator.payloads(3)[topic]["state"],
+            {"open_active": True, "close_active": False, "open_remaining": 14},
+        )
+        self.assertEqual(
+            simulator.payloads(18)[topic]["state"],
+            {"open_active": False, "close_active": False},
+        )
+
+        request.update(request_id="req-3", target="front_ac", action="cool")
+        result, topic = simulator.handle(request, 19)
+        self.assertIsNone(topic)
+        self.assertEqual(result["status"], "rejected")
+
+    def test_fan_action_simulator_ignores_malformed_requests(self) -> None:
+        simulator = FanActionSimulator()
+        self.assertEqual(simulator.handle({"version": 1}, 0), (None, None))
+
     def test_tank_scenario_generates_independent_discrete_levels(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -128,6 +171,17 @@ class FakeMqttTests(unittest.TestCase):
         self.assertEqual(first["rv/renogy"]["battery_percentage"], 72)
         self.assertEqual(later["rv/renogy"]["battery_percentage"], 80)
         self.assertEqual(later["rv/renogy"]["charging_status"], "idle")
+
+    def test_action_mode_allows_dashboard_topics_without_telemetry_scenarios(self) -> None:
+        scenarios = load_scenarios(
+            REPOSITORY / "fake-mqtt.example.yaml",
+            REPOSITORY / "config.test.yaml",
+            allow_missing_topics=True,
+        )
+        self.assertTrue(scenarios)
+        self.assertTrue(all(topic in scenarios for topic in (
+            "rv/renogy", "rv/hughes", "rv/obd",
+        )))
 
     def test_generators_follow_elapsed_time_and_wrap(self) -> None:
         ramp = {"generator": "ramp", "min": 0, "max": 10, "period_s": 20, "decimals": 0}
@@ -236,6 +290,60 @@ class FakeMqttTests(unittest.TestCase):
 
 
 class FakePublisherTests(unittest.IsolatedAsyncioTestCase):
+    async def test_simulated_command_publishes_state_and_correlated_result(self) -> None:
+        broker = AsyncMock()
+        request = {
+            "version": 1, "client_id": "rv-control-web", "request_id": "req-1",
+            "target": "mid_bath_fan", "action": "on",
+        }
+
+        async def messages():
+            yield SimpleNamespace(
+                topic="rv/coach/command",
+                payload=json.dumps(request).encode(),
+            )
+
+        broker.messages = messages()
+        await consume_simulated_commands(broker, FanActionSimulator())
+
+        calls = broker.publish.await_args_list
+        self.assertEqual(calls[0].args[0], "rv/coach/entity/mid_bath_fan")
+        self.assertEqual(json.loads(calls[0].args[1]), {"state": {"on": True}})
+        self.assertEqual(calls[0].kwargs, {"qos": 0, "retain": False})
+        self.assertEqual(calls[1].args[0], "rv/coach/result/rv-control-web/req-1")
+        result = json.loads(calls[1].args[1])
+        self.assertEqual((result["status"], result["outcome"]), ("completed", "dispatched"))
+        self.assertEqual(calls[1].kwargs, {"qos": 1, "retain": False})
+
+    async def test_action_mode_subscribes_and_publishes_initial_fan_states(self) -> None:
+        client = AsyncMock()
+        client.__aenter__.return_value = client
+        clock = [0.0]
+
+        async def empty_messages():
+            await asyncio.Event().wait()
+            yield None
+
+        client.messages = empty_messages()
+
+        async def stop_after_first_tick(delay: float) -> None:
+            clock[0] += delay
+            raise asyncio.CancelledError
+
+        with patch("backend.app.fake_mqtt.aiomqtt.Client", return_value=client), \
+             patch("backend.app.fake_mqtt.time", SimpleNamespace(monotonic=lambda: clock[0])), \
+             patch("backend.app.fake_mqtt.asyncio.sleep", side_effect=stop_after_first_tick):
+            with self.assertRaises(asyncio.CancelledError):
+                await publish_forever(
+                    "localhost", 1883, {"sample": TopicScenario({"value": 1}, 1, 0, False)},
+                    simulate_actions=True,
+                )
+
+        client.subscribe.assert_awaited_once_with("rv/coach/command", qos=1)
+        published_topics = [call.args[0] for call in client.publish.await_args_list]
+        self.assertIn("rv/coach/entity/kitchen_fan", published_topics)
+        self.assertIn("rv/coach/entity/kitchen_fan_lid", published_topics)
+
     async def test_per_topic_intervals_qos_and_retain(self) -> None:
         scenarios = {
             "fast": TopicScenario({"value": 1}, 1, 1, True),

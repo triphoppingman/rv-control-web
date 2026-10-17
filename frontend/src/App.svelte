@@ -7,7 +7,10 @@
   let values = {};
   let connected = false;
   let commandControlsEnabled = false;
+  let queryControlsEnabled = false;
   let commandBusy = false;
+  let refreshBusy = false;
+  let refreshResult = null;
   let pendingControlId = null;
   let commandResults = {};
   let error = '';
@@ -56,7 +59,10 @@
     values = {};
     connected = false;
     commandControlsEnabled = false;
+    queryControlsEnabled = false;
     commandBusy = false;
+    refreshBusy = false;
+    refreshResult = null;
     pendingControlId = null;
     commandResults = {};
   }
@@ -74,6 +80,7 @@
 
   function applyDashboard(data) {
     config = data;
+    queryControlsEnabled = data.query_controls_enabled === true;
     configRevision += 1;
     error = '';
     const requested = new URLSearchParams(location.search).get('tab');
@@ -135,16 +142,29 @@
 
   function select(tab) {
     // Hidden tabs should not display old values while their new snapshot is in flight.
+    const changed = active?.id !== tab.id;
     active = tab;
     values = {};
     const url = new URL(window.location);
     url.searchParams.set('tab', tab.id);
     history.replaceState(null, '', url);
-    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'subscribe', tab: tab.id }));
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: 'subscribe', tab: tab.id }));
+      if (changed && tab.id === 'coach') refreshCoachStates();
+    }
+  }
+
+  function refreshCoachStates() {
+    if (!queryControlsEnabled || !connected || commandBusy || refreshBusy
+      || socket?.readyState !== WebSocket.OPEN) return;
+    refreshBusy = true;
+    refreshResult = { status: 'sending', message: 'Requesting fresh Coach status...' };
+    socket.send(JSON.stringify({ type: 'refresh_states' }));
   }
 
   function sendControl(control, value) {
-    if (!commandControlsEnabled || !connected || commandBusy || socket?.readyState !== WebSocket.OPEN) return;
+    if (!commandControlsEnabled || !connected || commandBusy || refreshBusy
+      || socket?.readyState !== WebSocket.OPEN) return;
     if (control.confirm && !window.confirm(`Send ${control.action} to ${control.target}?`)) return;
     commandBusy = true;
     pendingControlId = control.id;
@@ -175,6 +195,8 @@
       if (message.type === 'config') {
         applyDashboard(message.config);
         commandControlsEnabled = message.config.command_controls_enabled === true;
+        queryControlsEnabled = message.config.query_controls_enabled === true;
+        if (active?.id === 'coach') refreshCoachStates();
         return;
       }
       if (message.type === 'command_result') {
@@ -186,6 +208,11 @@
           ...commandResults,
           [message.action_id]: { status: message.status, message: message.message },
         };
+        return;
+      }
+      if (message.type === 'refresh_result') {
+        refreshBusy = false;
+        refreshResult = message;
         return;
       }
       // A snapshot replaces current-tab state; later updates merge by topic.
@@ -214,6 +241,7 @@
         pendingControlId = null;
         commandBusy = false;
       }
+      refreshBusy = false;
       if (!stopped) {
         // Reconnect with capped backoff; onopen subscribes to the current tab again.
         retry = setTimeout(async () => {
@@ -284,11 +312,32 @@
     </nav>
     <main>
       {#if active}
-        <div class="page-heading"><div><div class="eyebrow">SYSTEM OVERVIEW</div><h1>{active.label || active.id}</h1></div><time>{new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
+        <div class="page-heading">
+          <div><div class="eyebrow">SYSTEM OVERVIEW</div><h1>{active.label || active.id}</h1></div>
+          <div class="page-actions">
+            {#if active.id === 'coach'}
+              <button type="button" disabled={!queryControlsEnabled || !connected || commandBusy || refreshBusy}
+                title={!queryControlsEnabled ? 'Coach queries are disabled by server configuration' : undefined}
+                on:click={refreshCoachStates}>{refreshBusy ? 'Refreshing...' : 'Refresh Coach status'}</button>
+            {/if}
+            <time>{new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
+          </div>
+        </div>
+        {#if active.id === 'coach' && refreshResult}
+          <p class="refresh-result" class:failed={refreshResult.status !== 'completed'} role="status">
+            {refreshResult.message}
+            {#if refreshResult.data?.entities}
+              {#each refreshResult.data.entities as item (item.entity)}
+                <span>{item.entity}: {item.status}</span>
+              {/each}
+            {/if}
+          </p>
+        {/if}
         <!-- Remount the tree on tab changes so chart history belongs to one tab. -->
         {#key `${configRevision}:${active.id}`}<Node node={active.root} {values} {now}
           staleAfter={config.stream?.stale_after_ms ?? 10000} theme={effectiveTheme} {connected}
-          {commandControlsEnabled} {commandBusy} {commandResults} sendControl={sendControl} />{/key}
+          {commandControlsEnabled} commandBusy={commandBusy || refreshBusy}
+          {commandResults} sendControl={sendControl} />{/key}
       {/if}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
     </main>

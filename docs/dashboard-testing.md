@@ -141,12 +141,24 @@ In another terminal:
 
 ```sh
 backend/.venv/bin/python -m backend.app.fake_mqtt \
-  --scenario fake-mqtt.example.yaml --dashboard-config config.test.yaml
+  --scenario fake-mqtt.example.yaml --dashboard-config config.test.yaml \
+  --simulate-actions
 ```
 
 The publisher logs its connection and selected topics. The shipped setup
 publishes Renogy readings every second and Hughes readings every two seconds.
 Both use retained messages.
+
+`--simulate-actions` is an opt-in test mode. It publishes synthetic initial
+states for the three Coach fans and kitchen lid, listens on
+`rv/coach/command`, and simulates fan `on`/`off` plus kitchen lid `open`/`close`
+commands with correlated results. Lid relay activity clears after 15 seconds.
+It does not simulate other Coach actions. Use an isolated test broker and
+enable commands only in the local backend configuration; do not run this
+simulator alongside RV-Control on a broker where real commands are enabled.
+The backend configuration used for the UI must also set
+`mqtt.commands_enabled: true` (`config.test.yaml` keeps it disabled by default);
+restart the backend after changing that setting.
 
 ### 4. Open the dashboard
 
@@ -426,6 +438,23 @@ one non-retained QoS 1 request to `rv/coach/command`. It never retries a
 command. A timeout means the outcome is unknown; inspect live telemetry before
 manually issuing a new action. Keep command publishing disabled in the
 fake-broker test setup.
+
+## Refresh Coach state
+
+When the Coach page opens, the dashboard sends a read-only `refresh_states`
+query for the unique Coach entities bound on that page. **Refresh Coach
+status** sends the same query manually. The backend derives entity IDs from
+the active tab's configured Coach topics; the browser cannot provide an
+arbitrary entity list. Results include each entity's observed, partial,
+timed-out, unsupported, or unavailable status. This query does not execute
+physical controls.
+
+To enable it, set `mqtt.queries_enabled: true` in the web backend config, enable
+Coach queries in RV-Control, and grant the `rv-control-web` controller
+`refresh_states` for the required entities in its Coach controller policy.
+The RV-Control query API is rate-limited; opening the page and immediately
+refreshing again may return `rate_limited`. Query support is disabled by
+default in the example and test backend configs.
 
 ## Read-only fans and kitchen lid
 

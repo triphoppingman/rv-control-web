@@ -48,6 +48,9 @@ mqtt_settings = settings.get("mqtt", {})
 commands_enabled = mqtt_settings.get("commands_enabled", False)
 if not isinstance(commands_enabled, bool):
     raise ValueError("mqtt.commands_enabled must be a boolean")
+queries_enabled = mqtt_settings.get("queries_enabled", False)
+if not isinstance(queries_enabled, bool):
+    raise ValueError("mqtt.queries_enabled must be a boolean")
 command_client_id = mqtt_settings.get("command_client_id", "rv-control-web")
 if not isinstance(command_client_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", command_client_id):
     raise ValueError("mqtt.command_client_id must match [A-Za-z0-9_-]{1,64}")
@@ -102,8 +105,9 @@ def _resolve_command_result(
         return
     if future.done():
         return
-    if len(raw) > 8192:
-        logger.warning("Oversized MQTT command result on %s", topic)
+    maximum_size = 256 * 1024 if request.get("action") == "refresh_states" else 8192
+    if len(raw) > maximum_size:
+        logger.warning("Oversized MQTT request result on %s", topic)
         return
 
     def unique_fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -288,6 +292,108 @@ async def submit_control(
         active_command_id = None
 
 
+async def refresh_tab_states(viewer: Viewer) -> dict[str, Any]:
+    """Ask Coach for fresh state of every entity represented on the active tab."""
+    global active_command_id
+    tab = viewer.tab
+    topics = tab_topics.get(tab, set()) if tab else set()
+    entities = sorted({
+        topic.removeprefix("rv/coach/entity/")
+        for topic in topics
+        if topic.startswith("rv/coach/entity/")
+        and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", topic.removeprefix("rv/coach/entity/"))
+    })
+    action_id = "refresh_coach_states"
+    if not entities:
+        return {
+            "type": "refresh_result", "action_id": action_id, "status": "rejected",
+            "code": "no_coach_entities", "message": "The active tab has no Coach entities.",
+        }
+    if len(entities) > 200:
+        return {
+            "type": "refresh_result", "action_id": action_id, "status": "rejected",
+            "code": "too_many_entities", "message": "The active tab has more than 200 Coach entities.",
+        }
+    if not queries_enabled:
+        return {
+            "type": "refresh_result", "action_id": action_id, "status": "rejected",
+            "code": "queries_disabled", "message": "Coach state refresh is disabled by server configuration.",
+        }
+    if active_command_id is not None:
+        return {
+            "type": "refresh_result", "action_id": action_id, "status": "rejected",
+            "code": "busy", "message": "Another Coach request is in progress.",
+        }
+    broker = mqtt_client
+    if not mqtt_connected or broker is None:
+        return {
+            "type": "refresh_result", "action_id": action_id, "status": "failed",
+            "code": "broker_unavailable", "message": "MQTT is unavailable; no refresh was sent.",
+        }
+
+    request_id = str(uuid4())
+    issued = datetime.now(timezone.utc).replace(microsecond=0)
+    request = {
+        "version": 1,
+        "client_id": command_client_id,
+        "request_id": request_id,
+        "issued_at": issued.isoformat().replace("+00:00", "Z"),
+        "expires_at": (issued + timedelta(seconds=15)).isoformat().replace("+00:00", "Z"),
+        "target": "coach",
+        "action": "refresh_states",
+        "params": {"entities": entities, "timeout_s": 5},
+        "confirmed": False,
+    }
+    result_topic = f"rv/coach/result/{command_client_id}/{request_id}"
+    future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+    pending_command_results[result_topic] = (future, request)
+    active_command_id = request_id
+    publish_attempted = False
+    try:
+        await broker.subscribe(result_topic, qos=1)
+        publish_attempted = True
+        await broker.publish(
+            "rv/coach/query", json.dumps(request, separators=(",", ":"), allow_nan=False),
+            qos=1, retain=False,
+        )
+        result = await asyncio.wait_for(future, timeout=COMMAND_RESULT_TIMEOUT)
+        return {
+            "type": "refresh_result",
+            "action_id": action_id,
+            "request_id": request_id,
+            "status": result["status"],
+            "code": result["code"],
+            "message": result["message"],
+            "data": result.get("data"),
+        }
+    except asyncio.TimeoutError:
+        logger.warning("Coach state refresh timeout request_id=%s", request_id)
+        return {
+            "type": "refresh_result", "action_id": action_id, "request_id": request_id,
+            "status": "failed", "code": "result_timeout",
+            "message": "No refresh result arrived; state freshness is unknown.",
+        }
+    except aiomqtt.MqttError as exc:
+        logger.warning("Coach state refresh MQTT failure request_id=%s: %s", request_id, exc)
+        return {
+            "type": "refresh_result", "action_id": action_id, "request_id": request_id,
+            "status": "failed", "code": "mqtt_unavailable",
+            "message": (
+                "MQTT refresh delivery failed; state freshness is unknown."
+                if publish_attempted else "MQTT subscription failed; no refresh was sent."
+            ),
+        }
+    finally:
+        pending_command_results.pop(result_topic, None)
+        if not future.done():
+            future.cancel()
+        try:
+            await broker.unsubscribe(result_topic)
+        except (aiomqtt.MqttError, OSError, RuntimeError) as exc:
+            logger.warning("Could not unsubscribe from refresh result topic: %s", exc)
+        active_command_id = None
+
+
 async def receive_mqtt() -> None:
     """Reconnect to the broker and update the latest-value cache."""
     global mqtt_client, mqtt_connected
@@ -413,6 +519,7 @@ async def watch_dashboard() -> None:
                     "config": {
                         **dashboard, "stream": stream_settings,
                         "command_controls_enabled": commands_enabled,
+                        "query_controls_enabled": queries_enabled,
                     },
                 }
             for viewer in tuple(clients):
@@ -556,6 +663,7 @@ async def get_config() -> dict[str, Any]:
     return {
         **dashboard, "stream": stream_settings,
         "command_controls_enabled": commands_enabled,
+        "query_controls_enabled": queries_enabled,
     }
 
 
@@ -607,8 +715,11 @@ async def websocket(socket: WebSocket) -> None:
                     continue
                 await viewer.send(await submit_control(viewer, action_id, confirmed, value))
                 continue
+            if message.get("type") == "refresh_states":
+                await viewer.send(await refresh_tab_states(viewer))
+                continue
             if message.get("type") not in {"subscribe", "unsubscribe"}:
-                await viewer.send({"type": "error", "code": "invalid_message", "message": "Expected subscribe, unsubscribe, or command."})
+                await viewer.send({"type": "error", "code": "invalid_message", "message": "Expected subscribe, unsubscribe, command, or refresh_states."})
                 continue
             tab = message.get("tab")
             if tab not in tab_topics:

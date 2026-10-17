@@ -301,6 +301,99 @@ class CommandPublishingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(future.result()["status"], "completed")
 
 
+class RefreshResultParserTests(unittest.IsolatedAsyncioTestCase):
+    async def test_refresh_result_size_limit_allows_query_payloads_over_action_limit(self) -> None:
+        request = {
+            "version": 1, "client_id": "rv-control-web", "request_id": "req-1",
+            "target": "coach", "action": "refresh_states",
+        }
+        future = asyncio.get_running_loop().create_future()
+        result = {
+            **request, "status": "completed", "code": "partial", "message": "Refreshed",
+            "timestamp": "2026-10-17T12:00:00Z", "outcome": "not_started",
+            "steps_completed": 0, "data": {"entities": [{"entity": "fan"}]},
+        }
+        raw = json.dumps({**result, "data": {"padding": "x" * 9000}}).encode()
+        main._resolve_command_result(
+            "rv/coach/result/rv-control-web/req-1", raw, (future, request), False,
+        )
+        self.assertTrue(future.done())
+        self.assertEqual(future.result()["code"], "partial")
+
+
+class RefreshStatesTests(unittest.IsolatedAsyncioTestCase):
+    async def test_refresh_publishes_all_active_tab_coach_entities(self) -> None:
+        viewer = main.Viewer(AsyncMock())
+        viewer.tab = "coach"
+        broker = AsyncMock()
+        operations: list[str] = []
+        topics = {
+            "rv/coach/entity/kitchen_fan",
+            "rv/coach/entity/kitchen_fan_lid",
+            "rv/coach/entity/rear_bath_fan",
+            "rv/renogy",
+        }
+
+        async def subscribe(*_args: object, **_kwargs: object) -> None:
+            operations.append("subscribe")
+
+        async def publish(topic: str, payload: str, **_options: object) -> None:
+            operations.append("publish")
+            request = json.loads(payload)
+            self.assertEqual(topic, "rv/coach/query")
+            result_topic = f"rv/coach/result/{request['client_id']}/{request['request_id']}"
+            future, _ = main.pending_command_results[result_topic]
+            future.set_result({
+                "version": 1, "client_id": request["client_id"],
+                "request_id": request["request_id"], "target": "coach",
+                "action": "refresh_states", "status": "completed", "code": "observed",
+                "message": "Fresh state observed.", "timestamp": datetime.now(timezone.utc).isoformat(),
+                "outcome": "not_started", "steps_completed": 0,
+                "data": {"entities": [{"entity": "kitchen_fan", "status": "observed"}]},
+            })
+
+        broker.subscribe.side_effect = subscribe
+        broker.publish.side_effect = publish
+        with (
+            patch.object(main, "mqtt_client", broker),
+            patch.object(main, "mqtt_connected", True),
+            patch.object(main, "queries_enabled", True),
+            patch.object(main, "command_client_id", "rv-control-web"),
+            patch.object(main, "tab_topics", {"coach": topics}),
+            patch.object(main, "pending_command_results", {}),
+            patch.object(main, "active_command_id", None),
+        ):
+            result = await main.refresh_tab_states(viewer)
+
+        self.assertEqual(operations, ["subscribe", "publish"])
+        request = json.loads(broker.publish.await_args.args[1])
+        self.assertEqual(request["target"], "coach")
+        self.assertEqual(request["action"], "refresh_states")
+        self.assertEqual(request["params"], {
+            "entities": ["kitchen_fan", "kitchen_fan_lid", "rear_bath_fan"],
+            "timeout_s": 5,
+        })
+        self.assertFalse(request["confirmed"])
+        self.assertEqual(broker.publish.await_args.kwargs, {"qos": 1, "retain": False})
+        self.assertEqual(result["type"], "refresh_result")
+        self.assertEqual(result["code"], "observed")
+        self.assertEqual(result["data"]["entities"][0]["status"], "observed")
+
+    async def test_refresh_is_disabled_by_default_and_does_not_publish(self) -> None:
+        viewer = main.Viewer(AsyncMock())
+        viewer.tab = "coach"
+        broker = AsyncMock()
+        with (
+            patch.object(main, "mqtt_client", broker),
+            patch.object(main, "mqtt_connected", True),
+            patch.object(main, "queries_enabled", False),
+            patch.object(main, "tab_topics", {"coach": {"rv/coach/entity/kitchen_fan"}}),
+        ):
+            result = await main.refresh_tab_states(viewer)
+        self.assertEqual(result["code"], "queries_disabled")
+        broker.publish.assert_not_awaited()
+
+
 class CommandWebSocketTests(unittest.TestCase):
     def test_unauthenticated_browser_command_uses_dashboard_action_and_returns_result(self) -> None:
         control = {

@@ -8,6 +8,7 @@ mqtt:
   port: 1883
   client_id: rv-web-test-dashboard
   commands_enabled: false
+  queries_enabled: false
   command_client_id: rv-control-web
 stream:
   tick_hz: 12
