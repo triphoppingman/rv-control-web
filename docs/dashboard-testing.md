@@ -23,7 +23,7 @@ see the [README](../README.md); for the application design, see
 | File | Purpose |
 | --- | --- |
 | [config.test.yaml](../config.test.yaml) | Test backend settings; localhost broker on port 1883, example dashboard, 12 Hz streaming, 10-second default staleness |
-| [dashboard.example.yaml](../dashboard.example.yaml) | Shipped Power, Shore Power, and OBD2 tabs |
+| [dashboard.example.yaml](../dashboard.example.yaml) | Shipped Power, Shore Power, Coach, and OBD2 tabs |
 | [fake-mqtt.example.yaml](../fake-mqtt.example.yaml) | Synthetic payload templates and change patterns |
 | [docker-compose.test.yml](../deploy/docker-compose.test.yml) | Test-only Mosquitto service in Compose project `rv-web-test` |
 | [mosquitto.test.conf](../deploy/mosquitto.test.conf) | Anonymous test broker with persistence disabled |
@@ -47,7 +47,30 @@ The example dashboard has:
 | --- | --- | --- |
 | Power | `rv/renogy` | State-of-charge gauge and trend, PV-to-battery voltage delta, PV power |
 | Shore Power | `rv/hughes` | Line-voltage gauge, current, power trend, error code, energy |
+| Coach | `rv/coach/entity/<entity>` | Fresh water, gray, black, black 2, and LPG tank levels |
 | OBD2 | `rv/obd` | RPM, speed, engine load, coolant and transmission temperatures, intake and ambient air, fuel, barometric pressure, voltage, gear, raw torque converter clutch |
+
+### Coach tank bindings
+
+The Coach tab binds to the published MQTT entity payloads, with no runtime
+dependency on RV-Control files. The verified topic prefix is
+`rv/coach/entity/` (singular), not `rv/coach/entities/`.
+Each widget reads `state.level`, the publisher's percentage from 0 to 100:
+
+| Tank | Entity topic suffix | Display segments |
+| --- | --- | --- |
+| Fresh water | `fresh_tank` | 3 |
+| Gray | `gray_tank` | 3 |
+| Black | `black_tank` | 3 |
+| Black 2 | `black2_tank` | 3 |
+| LPG | `lpg_tank` | 10 |
+
+Water and waste tanks report thirds; LPG reports a finer percentage.
+Widgets show the numeric percentage alongside the tank graphic and retain
+the standard No data, Invalid input, and Stale states. Only Coach topics
+are streamed while that tab is selected. No MQTT commands are published.
+The fake scenario does not supply these coach entity topics; use a broker
+with real coach telemetry to exercise the shipped Coach tab.
 
 OBD bindings use the configured MQTT topic, not the source section name
 (`obd_engine`). The example uses `rv/obd` and only active PID fields; disabled
@@ -63,7 +86,7 @@ It also defines `rv/tanks` with independent integer sequences for
 steps respectively. The topic publishes every two seconds with retention.
 These synthetic levels exercise empty, thirds, and full states, not physical
 tank behavior. Tank telemetry is selected only when the chosen test dashboard
-binds to `rv/tanks`; no tanks are added to the live dashboard.
+binds to `rv/tanks`; it does not feed the Coach tab's entity bindings.
 The publisher selects topics across **all** dashboard tabs; the application
 streams only the active tab's topics to each viewer.
 
@@ -302,6 +325,31 @@ The default is `true`, preserving existing dial warning zones. For a voltage
 dial centered on 120 V at the top, use `min: 90` and `max: 150` (the midpoint
 of the symmetric needle sweep is 120). This changes the displayed scale only,
 not the telemetry value or protection settings.
+
+## Read-only lights
+
+Use `type: light` to show a bulb indicator and On/Off status. Bind
+`payload_path` to either a boolean or an entity state object:
+
+```yaml
+type: light
+label: Living ceiling
+topic: rv/coach/entity/living_ceiling_light
+payload_path: state
+```
+
+An object must contain boolean `on`; optional `level` is a percentage from
+0 to 100. For example, `{"on": true, "level": 35}` shows On and 35% brightness.
+Boolean-only values and objects without a level show just On/Off.
+A null or absent level means brightness is unavailable, not zero.
+Off takes precedence over a remembered brightness level and dims the bulb.
+Missing values show No data; malformed states show Invalid input.
+Stale readings retain their last status with a Stale badge and muted display.
+There are no buttons, sliders, or MQTT commands.
+
+The live and example Coach tabs include a Living ceiling widget. Like the
+coach tanks, it requires real entity telemetry; the fake scenario does not
+currently supply that topic.
 
 ## Segmented tank levels
 

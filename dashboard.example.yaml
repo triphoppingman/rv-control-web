@@ -94,6 +94,70 @@ tabs:
               payload_path: energy
               unit: kWh
               decimals: 3
+  - id: coach
+    label: Coach
+    root:
+      type: grid
+      cols: 5
+      children:
+        - type: tank
+          label: Fresh water
+          span: 1
+          topic: rv/coach/entity/fresh_tank
+          payload_path: state.level
+          unit: "%"
+          min: 0
+          max: 100
+          segments: 3
+          decimals: 0
+        - type: tank
+          label: Gray
+          span: 1
+          topic: rv/coach/entity/gray_tank
+          payload_path: state.level
+          unit: "%"
+          min: 0
+          max: 100
+          segments: 3
+          decimals: 0
+        - type: tank
+          label: Black
+          span: 1
+          topic: rv/coach/entity/black_tank
+          payload_path: state.level
+          unit: "%"
+          min: 0
+          max: 100
+          segments: 3
+          decimals: 0
+        - type: tank
+          label: Black 2
+          span: 1
+          topic: rv/coach/entity/black2_tank
+          payload_path: state.level
+          unit: "%"
+          min: 0
+          max: 100
+          segments: 3
+          decimals: 0
+        - type: tank
+          label: LPG
+          span: 1
+          topic: rv/coach/entity/lpg_tank
+          payload_path: state.level
+          unit: "%"
+          min: 0
+          max: 100
+          segments: 10
+          decimals: 0
+        - type: card
+          title: Lights
+          span: 5
+          children:
+            - type: light
+              label: Living ceiling
+              topic: rv/coach/entity/living_ceiling_light
+              payload_path: state
   - id: obd2
     label: OBD2
     root:

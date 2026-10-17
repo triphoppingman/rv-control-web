@@ -22,7 +22,7 @@ DashboardLoader.add_implicit_resolver(
 
 
 CONTAINERS = {"grid", "row", "column", "stack", "card", "flow"}
-BOUND = {"gauge", "dial", "numeric", "boolean", "sparkline", "tank"}
+BOUND = {"gauge", "dial", "numeric", "boolean", "sparkline", "tank", "light"}
 DERIVED_OPERATIONS = {"sum", "difference", "product", "ratio", "average"}
 STATIC = {"text", "image", "icon", "divider", "spacer"}
 MAP_ORIENTATIONS = {"north_up", "heading_up"}

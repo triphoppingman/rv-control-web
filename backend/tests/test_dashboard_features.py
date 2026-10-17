@@ -20,6 +20,37 @@ from backend.app.dashboard import load_dashboard
 
 
 class DashboardFeatureTests(unittest.TestCase):
+    def test_light_configuration_and_samples(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "dashboard.yaml"
+            path.write_text(yaml.safe_dump({"tabs": [{"id": "coach", "root": {
+                "type": "light", "topic": "rv/coach/entity/light", "payload_path": "state",
+            }}]}))
+            dashboard, topics = load_dashboard(path, root)
+            self.assertEqual(topics, {"coach": {"rv/coach/entity/light"}})
+            for value in (
+                True, False, {"on": True}, {"on": False, "level": 75},
+                {"on": True, "level": 0}, {"on": True, "level": 100},
+                {"on": True, "level": None},
+            ):
+                with self.subTest(value=value):
+                    self.assertEqual(validate_samples(
+                        dashboard, {"rv/coach/entity/light": {"state": value}},
+                        topics["coach"],
+                    ), [])
+            for value in (
+                None, 1, "on", {}, [], {"on": 1}, {"on": "false"},
+                {"on": True, "level": True}, {"on": True, "level": "50"},
+                {"on": True, "level": -1}, {"on": True, "level": 101},
+                {"on": True, "level": float("inf")},
+            ):
+                with self.subTest(value=value):
+                    self.assertTrue(validate_samples(
+                        dashboard, {"rv/coach/entity/light": {"state": value}},
+                        topics["coach"],
+                    ))
+
     def test_tank_configuration_and_numeric_samples(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

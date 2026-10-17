@@ -118,6 +118,23 @@ def validate_samples(
                     errors.append(
                         f"{location}: topic {topic!r} payload_path {path!r} must resolve to a finite number"
                     )
+                elif node.get("type") == "light":
+                    valid = isinstance(value, bool) or (
+                        isinstance(value, dict)
+                        and isinstance(value.get("on"), bool)
+                        and (
+                            value.get("level") is None
+                            or (
+                                is_finite_number(value["level"])
+                                and 0 <= value["level"] <= 100
+                            )
+                        )
+                    )
+                    if not valid:
+                        errors.append(
+                            f"{location}: topic {topic!r} payload_path {path!r} must resolve "
+                            "to a boolean or a light state with boolean on and optional level from 0 to 100"
+                        )
                 elif node.get("type") == "derived":
                     derived_inputs.append(value)
             if derived_valid and calculate_derived(node["operation"], derived_inputs) is None:

@@ -206,6 +206,44 @@ try {
   assert(tanks.map((element) => element.querySelectorAll('.tank-segment.filled').length).join() === '3,1,2',
     'Multiple tanks independently bind to their own levels');
 
+  const light = { ...binding, type: 'light', label: 'Living ceiling' };
+  await render(light, false);
+  assert(fixture.querySelector('.light-reading strong').textContent === 'Off',
+    'Boolean light reports Off');
+  await reading(true, 2);
+  assert(fixture.querySelector('.light-status.on')
+    && !fixture.querySelector('.brightness'), 'Boolean light reports On without inventing brightness');
+  await reading({ on: true, level: 35 }, 3);
+  assert(fixture.querySelector('.brightness').textContent === '35% brightness',
+    'Dimmed entity displays its reported percentage');
+  await reading({ on: false, level: 80 }, 4);
+  assert(fixture.querySelector('.light-reading strong').textContent === 'Off'
+    && !fixture.querySelector('.brightness')
+    && !fixture.querySelector('.light-status.on'), 'Off overrides remembered brightness');
+  for (const level of [0, 100, null]) {
+    await reading({ on: true, level }, 5);
+    assert(fixture.querySelector('.state').textContent === 'Live',
+      `Light accepts boundary or unavailable brightness ${level}`);
+  }
+  await reading(null, 6);
+  assert(fixture.querySelector('.state').textContent === 'No data'
+    && fixture.querySelector('.light-reading strong').textContent === '--',
+  'Missing light state is not Off');
+  for (const value of [1, 'on', {}, [], { on: 1 }, { on: true, level: '35' },
+    { on: true, level: -1 }, { on: true, level: 101 }, { on: true, level: NaN }]) {
+    await reading(value, 7);
+    assert(fixture.querySelector('.state').textContent === 'Invalid input'
+      && fixture.querySelector('.light-reading strong').textContent === '--',
+    `Light rejects malformed state ${JSON.stringify(value)}`);
+  }
+  await reading({ on: true, level: 50 }, 8);
+  widget.$set({ now: 19000 });
+  await tick();
+  assert(fixture.querySelector('.state').textContent === 'Stale'
+    && fixture.querySelector('.widget.light.stale'), 'Light retains and marks stale status');
+  assert(!fixture.querySelector('button, input, [role="button"]'),
+    'Light widget contains no controls');
+
   results.textContent = `PASS: ${checks.length} checks\n${checks.join('\n')}`
     + (skipped.length ? `\nSKIPPED: ${skipped.join('; ')}` : '');
 } catch (error) {

@@ -3,6 +3,7 @@
   import Gauge from './Gauge.svelte';
   import Sparkline from './Sparkline.svelte';
   import Tank from './Tank.svelte';
+  import Light from './Light.svelte';
   import Map from './Map.svelte';
 
   // The same component recurses through layout containers and renders leaf widgets.
@@ -25,6 +26,14 @@
     return typeof value === 'number' ? value.toLocaleString(undefined, {
       minimumFractionDigits: decimals ?? 0, maximumFractionDigits: decimals ?? 1,
     }) : String(value);
+  }
+
+  function invalidLight(value) {
+    if (typeof value === 'boolean') return false;
+    if (typeof value !== 'object' || value === null || Array.isArray(value)
+      || typeof value.on !== 'boolean') return true;
+    return value.level != null && (typeof value.level !== 'number'
+      || !Number.isFinite(value.level) || value.level < 0 || value.level > 100);
   }
 
   function calculateDerived(node, values, now, staleAfter) {
@@ -64,8 +73,9 @@
   $: value = node.type === 'derived' ? derived.value : extract(record?.payload, node.payload_path);
   $: missing = node.type === 'derived' ? derived.missing : value === undefined || value === null;
   $: stale = node.type === 'derived' ? derived.stale : !missing && now - record.ts * 1000 > (node.stale_after_ms ?? staleAfter);
-  $: invalid = node.type === 'derived' ? derived.invalid : node.type === 'tank' && !missing
-    && (typeof value !== 'number' || !Number.isFinite(value));
+  $: invalid = node.type === 'derived' ? derived.invalid : !missing && (
+    node.type === 'light' ? invalidLight(value) : node.type === 'tank'
+      && (typeof value !== 'number' || !Number.isFinite(value)));
   // The highest threshold at or below the reading determines its color.
   $: active = node.thresholds?.filter((threshold) => Number(value) >= threshold.at)
     .sort((left, right) => right.at - left.at)[0];
@@ -83,10 +93,12 @@
         <svelte:self node={child} {values} {now} {staleAfter} {theme} />
       {/each}
     </div>
-  {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline', 'derived', 'tank'].includes(node.type)}
+  {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline', 'derived', 'tank', 'light'].includes(node.type)}
     <div class="widget {node.type}" class:stale style="--accent:{accent}; --span:{node.span || 12}; --min-width:{node.min_width || 'auto'}">
       <div class="widget-top"><span class="widget-label">{node.label || node.payload_path || node.operation}</span><span class="state" class:offline={missing || stale || invalid}>{state}</span></div>
-      {#if node.type === 'boolean'}
+      {#if node.type === 'light'}
+        <Light value={missing || invalid ? null : value} />
+      {:else if node.type === 'boolean'}
         <div class="boolean-value" class:on={!missing && (node.on_when === undefined ? !!value : value === node.on_when)}>
           <span class="indicator"></span>{missing ? '--' : (node.on_when === undefined ? !!value : value === node.on_when) ? (node.true_label || 'On') : (node.false_label || 'Off')}
         </div>
