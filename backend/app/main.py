@@ -1,13 +1,16 @@
-"""MQTT-backed, read-only dashboard API."""
+"""MQTT-backed dashboard API with opt-in Coach command controls."""
 
 import asyncio
 import json
 import logging
 import os
+import re
 import time
 from contextlib import asynccontextmanager, suppress
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, AsyncGenerator
+from uuid import uuid4
 
 import aiomqtt
 import yaml
@@ -20,7 +23,7 @@ from starlette.requests import HTTPConnection
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .auth import Auth, COOKIE_NAME, SESSION_SECONDS
-from .dashboard import load_dashboard
+from .dashboard import dashboard_controls, load_dashboard
 
 
 CONFIG_PATH = Path(os.environ.get("RV_WEB_CONFIG", "config.yaml")).resolve()
@@ -30,6 +33,7 @@ if not isinstance(settings, dict):
 dashboard_path = CONFIG_PATH.parent / settings.get("dashboard_file", "dashboard.yaml")
 assets_dir = (CONFIG_PATH.parent / settings.get("assets_dir", "assets")).resolve()
 dashboard, tab_topics = load_dashboard(dashboard_path, assets_dir)
+tab_controls = dashboard_controls(dashboard)
 dashboard_signature = dashboard_path.stat()
 all_topics = set().union(*tab_topics.values())
 stream_settings = settings.get("stream", {})
@@ -39,12 +43,26 @@ if tick_hz <= 0:
 logging.basicConfig(level=settings.get("log_level", "INFO"))
 logger = logging.getLogger(__name__)
 auth = Auth(settings.get("auth"), CONFIG_PATH.parent)
+mqtt_settings = settings.get("mqtt", {})
+commands_enabled = mqtt_settings.get("commands_enabled", False)
+if not isinstance(commands_enabled, bool):
+    raise ValueError("mqtt.commands_enabled must be a boolean")
+command_client_id = mqtt_settings.get("command_client_id", "rv-control-web")
+if not isinstance(command_client_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", command_client_id):
+    raise ValueError("mqtt.command_client_id must match [A-Za-z0-9_-]{1,64}")
+COMMAND_RESULT_TIMEOUT = 14
 if not auth.enabled:
-    logger.warning("Authentication explicitly disabled: use only for local testing")
+    logger.warning(
+        "Authentication disabled: every viewer can use configured controls when MQTT commands are enabled; "
+        "use only on a trusted local test network"
+    )
 password_slots = asyncio.Semaphore(2)
 values: dict[str, dict[str, Any]] = {}
 clients: set["Viewer"] = set()
 mqtt_connected = False
+mqtt_client: aiomqtt.Client | None = None
+pending_command_results: dict[str, tuple[asyncio.Future[dict[str, Any]], dict[str, Any]]] = {}
+active_command_id: str | None = None
 
 
 class Viewer:
@@ -71,9 +89,183 @@ class Viewer:
             await self.socket.close(code=4401)
 
 
+def _resolve_command_result(
+    topic: str,
+    raw: bytes,
+    pending: tuple[asyncio.Future[dict[str, Any]], dict[str, Any]],
+    retained: bool,
+) -> None:
+    future, request = pending
+    if retained:
+        logger.warning("Ignoring retained MQTT command result on %s", topic)
+        return
+    if future.done():
+        return
+    if len(raw) > 8192:
+        logger.warning("Oversized MQTT command result on %s", topic)
+        return
+
+    def unique_fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        decoded: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in decoded:
+                raise ValueError(f"duplicate result field {key}")
+            decoded[key] = value
+        return decoded
+
+    try:
+        result = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_fields)
+    except (UnicodeError, ValueError):
+        logger.warning("Invalid MQTT command result on %s", topic)
+        return
+    if (
+        not isinstance(result, dict) or type(result.get("version")) is not int
+        or type(result.get("steps_completed")) is not int or result["steps_completed"] < 0
+        or not isinstance(result.get("timestamp"), str)
+        or any(
+            result.get(field) != request[field]
+            for field in ("version", "client_id", "request_id", "target", "action")
+        )
+    ):
+        logger.warning("Uncorrelated MQTT command result on %s", topic)
+        return
+    status = result.get("status")
+    if status == "accepted":
+        return
+    if status not in {"completed", "rejected", "failed"}:
+        logger.warning("Invalid MQTT command status on %s", topic)
+        return
+    if any(
+        not isinstance(result.get(field), str) or len(result[field]) > 512
+        for field in ("code", "message", "outcome")
+    ) or result["outcome"] not in {"not_started", "dispatched", "partial", "unknown"}:
+        logger.warning("Invalid MQTT command result fields on %s", topic)
+        return
+    future.set_result(result)
+
+
+def _control_result(
+    action_id: str,
+    control: dict[str, Any] | None,
+    status: str,
+    code: str,
+    message: str,
+    outcome: str,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "type": "command_result",
+        "action_id": action_id,
+        "request_id": request_id,
+        "target": control.get("target") if control else None,
+        "action": control.get("action") if control else None,
+        "status": status,
+        "code": code,
+        "message": message,
+        "outcome": outcome,
+    }
+
+
+async def submit_control(viewer: Viewer, action_id: str, confirmed: bool) -> dict[str, Any]:
+    """Publish one configured action and wait for its correlated result."""
+    global active_command_id
+    control = tab_controls.get(viewer.tab, {}).get(action_id) if viewer.tab else None
+    if control is None:
+        return _control_result(
+            action_id, None, "rejected", "unknown_action", "This control is not available on the active tab.",
+            "not_started",
+        )
+    if not commands_enabled:
+        return _control_result(
+            action_id, control, "rejected", "writes_disabled", "Light controls are disabled by server configuration.",
+            "not_started",
+        )
+    if confirmed is not control["confirm"]:
+        return _control_result(
+            action_id, control, "rejected", "confirmation_required",
+            "The confirmation state did not match this control.", "not_started",
+        )
+    if active_command_id is not None:
+        return _control_result(
+            action_id, control, "rejected", "busy", "Another Coach command is in progress.",
+            "not_started",
+        )
+    broker = mqtt_client
+    if not mqtt_connected or broker is None:
+        return _control_result(
+            action_id, control, "failed", "broker_unavailable",
+            "MQTT is unavailable; no command was sent.", "not_started",
+        )
+
+    request_id = str(uuid4())
+    issued = datetime.now(timezone.utc).replace(microsecond=0)
+    expires = issued + timedelta(seconds=15)
+    request = {
+        "version": 1,
+        "client_id": command_client_id,
+        "request_id": request_id,
+        "issued_at": issued.isoformat().replace("+00:00", "Z"),
+        "expires_at": expires.isoformat().replace("+00:00", "Z"),
+        "target": control["target"],
+        "action": control["action"],
+        "params": control["params"],
+        "confirmed": control["confirm"],
+    }
+    result_topic = f"rv/coach/result/{command_client_id}/{request_id}"
+    future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+    pending_command_results[result_topic] = (future, request)
+    active_command_id = request_id
+    publish_attempted = False
+    try:
+        await broker.subscribe(result_topic, qos=1)
+        publish_attempted = True
+        await broker.publish(
+            "rv/coach/command", json.dumps(request, separators=(",", ":"), allow_nan=False),
+            qos=1, retain=False,
+        )
+        result = await asyncio.wait_for(future, timeout=COMMAND_RESULT_TIMEOUT)
+        logger.info(
+            "Coach command result request_id=%s client_id=%s target=%s action=%s status=%s outcome=%s",
+            request_id, command_client_id, control["target"], control["action"],
+            result["status"], result["outcome"],
+        )
+        return _control_result(
+            action_id, control, result["status"], result["code"], result["message"],
+            result["outcome"], request_id,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Coach command result timeout request_id=%s client_id=%s target=%s action=%s",
+            request_id, command_client_id, control["target"], control["action"],
+        )
+        return _control_result(
+            action_id, control, "failed", "result_timeout",
+            "No correlated result arrived. The action outcome is unknown; check live state before retrying.",
+            "unknown", request_id,
+        )
+    except aiomqtt.MqttError as exc:
+        logger.warning("Coach command MQTT failure request_id=%s: %s", request_id, exc)
+        outcome = "unknown" if publish_attempted else "not_started"
+        return _control_result(
+            action_id, control, "failed", "mqtt_unavailable",
+            "MQTT command delivery failed; check live state before retrying."
+            if publish_attempted else "MQTT subscription failed; no command was sent.",
+            outcome, request_id,
+        )
+    finally:
+        pending_command_results.pop(result_topic, None)
+        if not future.done():
+            future.cancel()
+        try:
+            await broker.unsubscribe(result_topic)
+        except (aiomqtt.MqttError, OSError, RuntimeError) as exc:
+            logger.warning("Could not unsubscribe from command result topic: %s", exc)
+        active_command_id = None
+
+
 async def receive_mqtt() -> None:
     """Reconnect to the broker and update the latest-value cache."""
-    global mqtt_connected
+    global mqtt_client, mqtt_connected
     options = settings.get("mqtt", {})
     delay = 1
     while True:
@@ -83,15 +275,23 @@ async def receive_mqtt() -> None:
                 port=int(options.get("port", 1883)),
                 username=options.get("username"),
                 password=options.get("password"),
-                identifier=options.get("client_id", "mqtt-dashboard"),
+                identifier=options.get("client_id", "rv-control-web"),
                 keepalive=int(options.get("keepalive", 60)),
+                clean_session=True,
             ) as broker:
+                mqtt_client = broker
                 mqtt_connected = True
                 delay = 1
                 for topic in sorted(all_topics):
                     await broker.subscribe(topic, qos=int(options.get("qos", 0)))
                 async for message in broker.messages:
                     topic = str(message.topic)
+                    pending = pending_command_results.get(topic)
+                    if pending is not None:
+                        _resolve_command_result(
+                            topic, bytes(message.payload), pending, bool(getattr(message, "retain", False))
+                        )
+                        continue
                     if topic not in all_topics:
                         continue
                     try:
@@ -110,6 +310,7 @@ async def receive_mqtt() -> None:
         except aiomqtt.MqttError as exc:
             logger.warning("MQTT unavailable: %s; retrying in %ss", exc, delay)
         finally:
+            mqtt_client = None
             mqtt_connected = False
         await asyncio.sleep(delay)
         delay = min(delay * 2, 10)
@@ -139,7 +340,7 @@ async def flush_updates() -> None:
 
 async def watch_dashboard() -> None:
     """Reload valid dashboard edits and restart MQTT only when topics change."""
-    global dashboard, tab_topics, all_topics, dashboard_signature
+    global dashboard, tab_topics, tab_controls, all_topics, dashboard_signature
     mqtt_task = asyncio.create_task(receive_mqtt())
     previous_error = None
     try:
@@ -155,6 +356,7 @@ async def watch_dashboard() -> None:
                     continue
                 dashboard_signature = signature
                 updated, updated_topics = load_dashboard(dashboard_path, assets_dir)
+                updated_controls = dashboard_controls(updated)
             except (OSError, UnicodeError, ValueError, yaml.YAMLError) as exc:
                 message = f"Dashboard reload failed: {exc}. Keeping the last valid dashboard."
                 if message == previous_error:
@@ -166,7 +368,9 @@ async def watch_dashboard() -> None:
                 previous_error = None
                 topics = set().union(*updated_topics.values())
                 changed_topics = topics != all_topics
-                dashboard, tab_topics, all_topics = updated, updated_topics, topics
+                dashboard, tab_topics, tab_controls, all_topics = (
+                    updated, updated_topics, updated_controls, topics
+                )
                 for topic in list(values):
                     if topic not in all_topics:
                         del values[topic]
@@ -179,7 +383,13 @@ async def watch_dashboard() -> None:
                         await mqtt_task
                     mqtt_task = asyncio.create_task(receive_mqtt())
                 logger.info("Reloaded dashboard from %s", dashboard_path)
-                notification = {"type": "config", "config": {**dashboard, "stream": stream_settings}}
+                notification = {
+                    "type": "config",
+                    "config": {
+                        **dashboard, "stream": stream_settings,
+                        "command_controls_enabled": commands_enabled,
+                    },
+                }
             for viewer in tuple(clients):
                 try:
                     await viewer.send(notification)
@@ -318,7 +528,10 @@ async def logout(request: Request) -> Response:
 @app.get("/api/config")
 async def get_config() -> dict[str, Any]:
     """Return the validated display tree and client timing settings."""
-    return {**dashboard, "stream": stream_settings}
+    return {
+        **dashboard, "stream": stream_settings,
+        "command_controls_enabled": commands_enabled,
+    }
 
 
 @app.get("/healthz")
@@ -335,7 +548,13 @@ async def websocket(socket: WebSocket) -> None:
     viewer = Viewer(socket, socket.cookies.get(COOKIE_NAME))
     clients.add(viewer)
     try:
-        await viewer.send({"type": "config", "config": {**dashboard, "stream": stream_settings}})
+        await viewer.send({
+            "type": "config",
+            "config": {
+                **dashboard, "stream": stream_settings,
+                "command_controls_enabled": commands_enabled,
+            },
+        })
         while True:
             if auth.enabled and auth.session(viewer.token) is None:
                 await viewer.close()
@@ -345,8 +564,25 @@ async def websocket(socket: WebSocket) -> None:
             except ValueError:
                 await viewer.send({"type": "error", "code": "invalid_message", "message": "Expected JSON."})
                 continue
-            if not isinstance(message, dict) or message.get("type") not in {"subscribe", "unsubscribe"}:
-                await viewer.send({"type": "error", "code": "invalid_message", "message": "Expected subscribe or unsubscribe."})
+            if not isinstance(message, dict):
+                await viewer.send({"type": "error", "code": "invalid_message", "message": "Expected a JSON object."})
+                continue
+            if message.get("type") == "command":
+                action_id = message.get("action_id")
+                confirmed = message.get("confirmed")
+                if (
+                    not isinstance(action_id, str) or len(action_id) > 64
+                    or not isinstance(confirmed, bool)
+                ):
+                    await viewer.send({
+                        "type": "error", "code": "invalid_message",
+                        "message": "Command messages require an action_id and boolean confirmed value.",
+                    })
+                    continue
+                await viewer.send(await submit_control(viewer, action_id, confirmed))
+                continue
+            if message.get("type") not in {"subscribe", "unsubscribe"}:
+                await viewer.send({"type": "error", "code": "invalid_message", "message": "Expected subscribe, unsubscribe, or command."})
                 continue
             tab = message.get("tab")
             if tab not in tab_topics:

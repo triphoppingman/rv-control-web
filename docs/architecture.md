@@ -48,22 +48,26 @@ readouts, and boolean indicators) or static (text, images, dividers, and
 spacers). The layout is a tree of containers for flexible composition across
 phones, tablets, and large monitors.
 
-The first release is read-only. A future release may add a write path that
-publishes to MQTT from the UI; this design reserves the protocol and security
-boundaries for that feature without implementing it now.
+Coach entity actions can be explicitly configured on dashboard widgets. The
+backend publishes semantic requests to the broker; the browser never connects
+to MQTT directly. Command publishing is disabled by default and requires
+authenticated access plus the configured controller policy on RV-Control.
 
 ## 2. Integration Boundary
 
 The dashboard integrates with RV-Control exclusively through the MQTT broker.
-RV-Control is an external MQTT publisher from the dashboard's perspective.
+RV-Control publishes telemetry and receives semantic command requests through
+its MQTT protocol.
 The dashboard must not import RV-Control modules, read its INI configuration,
 call its HTTP or command-line interfaces, inspect its files, or depend on its
 process lifecycle.
 
-The only shared contract is the broker connection and the published MQTT
+The only shared contract is the broker connection and the documented MQTT
 messages:
 
 - RV-Control publishes JSON telemetry to its configured MQTT topics.
+- When explicitly enabled, the dashboard publishes configured Coach actions
+  through `rv/coach/command` and receives correlated results.
 - The dashboard subscribes to the topics named by bound widgets in
   `dashboard.yaml`.
 - The dashboard treats topic names and JSON payload shapes as configuration;
@@ -118,13 +122,13 @@ assuming that similarly named sources have identical schemas.
 - Support data-bound and static widgets in a flexible, nestable layout.
 - Support approximately 200 devices on one host, with only the active tab
   streamed to each client.
-- Preserve a clean extension path to future write and control capabilities.
+- Support explicitly configured Coach entity actions over MQTT.
 
 ### Non-Goals (v1)
 
 - No historical storage or time-series querying. The system is instantaneous.
 - No in-app layout editor. Configuration is authored in YAML at deployment.
-- No publishing to MQTT from the UI.
+- No arbitrary MQTT topic or payload publishing from the browser.
 - No multi-broker federation.
 - No user-specific dashboards. All viewers see the same dashboard.
 
@@ -133,7 +137,7 @@ assuming that similarly named sources have identical schemas.
 | ID | Decision | Consequence |
 | --- | --- | --- |
 | D1 | The dashboard is purely instantaneous. | Use an in-memory last-value cache; do not add a time-series store. |
-| D2 | The first release is read-only. | Use WebSocket so a future write path can be added without changing transports. |
+| D2 | The browser never connects to MQTT. | Keep telemetry and configured actions behind the authenticated backend WebSocket. |
 | D3 | Display and layout are configured by YAML at deployment time. | Validate at startup and automatically reload valid dashboard edits; runtime settings require a restart. |
 | D4 | Payloads are JSON. | Parse each message once; widgets bind to fields through `payload_path`. |
 | D5 | The system supports approximately 200 devices across multiple tabs. | Use one backend process and no external fan-out bus. |
@@ -172,6 +176,8 @@ assuming that similarly named sources have identical schemas.
   configured MQTT topic.
 - **FR-16:** Render read-only derived numeric values from multiple MQTT bindings.
 - **FR-17:** Bound sparkline history and sampling according to widget settings.
+- **FR-18:** Publish configured Coach actions through the correlated MQTT
+  command protocol; clients can select only dashboard-configured action IDs.
 
 ### 5.2 Non-Functional Requirements
 
@@ -310,7 +316,11 @@ mqtt:
   port: 1883
   username: null
   password: null
-  client_id: mqtt-dashboard
+  client_id: rv-control-web
+  commands_enabled: false
+  command_client_id: rv-control-web
+  commands_enabled: false
+  command_client_id: rv-control-web
   qos: 0
   keepalive: 60
 
@@ -506,8 +516,9 @@ A node is a discriminated union on `type` with three families:
 - Bound widgets require `topic` and `payload_path`.
 - Static widgets have no topic and render from configuration only.
 
-Common fields are `type`, optional `id`, `span`, `min_width`, `visible`, and
-`class`. Container types are `grid`, `row`, `column`, `stack`, `card`, and `flow`.
+Common fields are `type`, optional `id`, `span`, `min_width`, `visible`,
+`class`, and optional action `controls`. Container types are `grid`, `row`,
+`column`, `stack`, `card`, and `flow`.
 Bound widget types are `gauge`, `dial`, `numeric`, `boolean`, and `sparkline`.
 Derived widget type is `derived`; it reads multiple numeric bindings and does
 not introduce a publish path.
@@ -518,6 +529,11 @@ Static types are `text`, `image`, `icon`, `divider`, and `spacer`.
 Validation rules:
 
 - `type` must be known.
+- `controls`, when present on a bound widget, must contain unique action IDs,
+  Coach entity targets matching that widget's MQTT state topic, action names,
+  display labels, optional JSON-scalar parameters, and an optional confirmation
+  flag. These are the only actions the browser can request; the backend never
+  accepts a topic or payload from the browser.
 - Bound widgets require a non-empty `topic` and `payload_path`.
 - Map widgets require a non-empty `topic`, validate optional payload paths (`lat_path`,
   `lon_path`, `track_path`, `alt_path`, `speed_path`, `mode_path`), and validate `zoom`
@@ -633,6 +649,18 @@ message has a `type` discriminator. Message type names are lowercase.
 { "type": "unsubscribe", "tab": "line1" }
 ```
 
+Configured control action:
+
+```json
+{ "type": "command", "action_id": "kitchen_light_toggle", "confirmed": false }
+```
+
+The backend resolves the ID only against controls configured on the active tab.
+It builds the versioned request envelope and fixed parameters from the validated
+dashboard; browser messages cannot override target, action, parameters, or MQTT
+topic. Control actions are accepted only when `mqtt.commands_enabled` is true
+and authentication is enabled.
+
 ### 10.2 Server to client
 
 The server sends `{ "type": "config", "config": ... }` containing the same
@@ -688,6 +716,31 @@ tab (or the first tab if the current tab was removed). Invalid edits send an
 { "type": "error", "code": "unknown_tab", "message": "No tab with id 'linex'." }
 ```
 
+Command completion or rejection:
+
+```json
+{
+  "type": "command_result",
+  "action_id": "kitchen_light_toggle",
+  "request_id": "f7d7055e-2cd3-4e1f-9839-b1543f665686",
+  "target": "kitchen_light",
+  "action": "toggle",
+  "status": "completed",
+  "code": "executed",
+  "message": "Configured action sequence executed; physical state is not confirmed.",
+  "outcome": "dispatched"
+}
+```
+
+The backend subscribes to `rv/coach/result/<command_client_id>/<request_id>`
+before publishing each v1 JSON envelope once to `rv/coach/command`, both at
+QoS 1 and non-retained. It validates correlation, waits up to 14 seconds, and
+never retries. The MQTT 3.1.1 client uses a clean session, preventing the broker
+from queuing commands for replay after a disconnect. A missing result is
+reported as an unknown outcome; users should check fresh telemetry before
+retrying. RV-Control remains authoritative for write gates, policy, supported
+actions, and physical execution.
+
 The server sends nothing until subscription. On close or error, the client
 reconnects with exponential backoff, capped at approximately 10 seconds, then
 resubscribes. Non-object JSON payloads are wrapped as `{ "value": <payload> }`.
@@ -713,8 +766,11 @@ REST endpoints:
 
 There is one MQTT client. For each message it decodes UTF-8, parses JSON, logs
 and skips malformed payloads, wraps non-object JSON, updates the cache, and
-notifies the hub. Broker disconnects use bounded backoff; the cache is rebuilt
-from messages received after reconnection.
+notifies the hub. During a configured command the client also subscribes to its
+single correlated result topic, publishes to the fixed Coach command topic,
+and routes matching results to the waiting WebSocket request. Broker
+disconnects use bounded backoff; the cache is rebuilt from messages received
+after reconnection.
 
 The cache maps topics to records containing `payload`, `raw`, and `ts`. Its size
 is bounded by the number of subscribed topics. Single-event-loop access makes
@@ -732,6 +788,10 @@ Unknown tabs return `unknown_tab` without changing the active tab. Send
 failures disconnect and clean up the client. MQTT disconnects are retried and
 reported by `/healthz`.
 
+Only validated controls belonging to the viewer's active tab can be submitted.
+One command is admitted at a time; a concurrent request receives `busy`.
+Result timeouts are not retried and are reported as uncertain outcomes.
+
 ## 13. Frontend Design Detail
 
 1. Fetch `/api/config` and store tabs and settings.
@@ -748,6 +808,9 @@ Gauges and dials use ECharts and resize through `ResizeObserver`. Numeric,
 boolean, and derived widgets apply formatting and stale/no-data styles.
 Sparklines keep only their configured rolling point count in the browser.
 Static content must never be rendered as raw HTML.
+Light widgets may expose a single-click toggle and a context menu of other
+configured actions. All actions go through the authenticated WebSocket; the
+browser never receives MQTT credentials.
 
 ## 14. Widget Catalog
 
@@ -858,8 +921,11 @@ special Traefik configuration.
 ## 17. Security Considerations
 
 - Viewer authentication supports one to three externally configured accounts
-  with salted password hashes and identical read-only access. In-memory
-  sessions expire after eight hours and are revoked on logout or restart.
+  with salted password hashes and identical access to configured controls.
+  When authentication is explicitly disabled, any reachable viewer can use
+  configured controls if command publishing is enabled; restrict this mode to
+  isolated local testing. In-memory sessions expire after eight hours and are
+  revoked on logout or restart.
   Protected API, widget assets, health details, and WebSockets require a
   session; login/logout and WebSocket connections also check allowed origins.
   See [authentication setup](authentication.md) for configuration and limits.
@@ -869,8 +935,13 @@ special Traefik configuration.
 - Treat MQTT payloads as untrusted. Parse safely, validate numeric values, and
   never render payloads through Svelte `{@html}`.
 - Restrict image sources to `assets_dir` and reject absolute or external URLs.
-- A future write path requires authorization, a server-side topic allow-list,
-  QoS 1, and an audit log.
+- Keep `mqtt.commands_enabled` false unless Coach command publishing is enabled
+  intentionally. The web backend uses the configured controller identity and
+  fixed `rv/coach/command` topic; only a dashboard-configured action ID can be
+  requested. RV-Control policy and broker ACLs remain required. Never grant
+  browser clients direct broker access. With authentication disabled, anyone
+  who can reach the UI can request those configured actions; use only on a
+  trusted, isolated test network.
 
 ## 18. Performance and Scalability
 
@@ -885,9 +956,7 @@ fan-out. That is outside the scope of v1.
 
 ## 19. Future Extensions
 
-- Write and control widgets with command/ack messages, authorization, allow-lists,
-  QoS 1 publishing, and auditing.
-- Per-user dashboards and role-based authorization.
+- Additional configurable action controls and per-user role authorization.
 - Short-term server-side history or a time-series store.
 - In-app layout editing with editable configuration.
 - SIGHUP-triggered reload in addition to automatic dashboard file watching.
@@ -925,7 +994,7 @@ mqtt-live-dashboard/
 - **M6, deployment:** Compose, Traefik, DNS-01 certificates, static and asset
   serving, example configuration, and operational documentation.
 - **M7, viewer login:** External accounts, sessions, and authenticated access.
-- **M8, future:** Write path and role-based authorization.
+- **M8:** Broader action controls and per-user role-based authorization.
 
 ## 22. Acceptance Criteria
 
@@ -946,6 +1015,9 @@ mqtt-live-dashboard/
   cache and update the dashboard without requiring retained messages.
 - **AC-11:** Traefik obtains a DNS-01 certificate, redirects HTTP to HTTPS, and
   successfully proxies WebSocket connections.
+- **AC-12:** Configured light controls publish one correlated QoS 1 command;
+  unauthenticated, disabled, unknown, and concurrent actions are rejected
+  without publishing, and a missing result is never automatically retried.
 
 ## 23. Copilot Implementation Guidance
 

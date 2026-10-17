@@ -7,8 +7,9 @@ see the [README](../README.md); for the application design, see
 
 ## Boundaries
 
-- The application remains read-only. Neither the browser nor the application
-  backend publishes MQTT commands.
+- Configured Coach light controls use the correlated command protocol, but
+  `config.test.yaml` keeps command publishing disabled. The browser never
+  connects directly to MQTT.
 - The fake publisher is a separate development tool. Mosquitto supplies the
   actual MQTT broker; the publisher supplies synthetic telemetry.
 - No RV-Control code, configuration, or process dependency is used.
@@ -68,7 +69,7 @@ Each widget reads `state.level`, the publisher's percentage from 0 to 100:
 Water and waste tanks report thirds; LPG reports a finer percentage.
 Widgets show the numeric percentage alongside the tank graphic and retain
 the standard No data, Invalid input, and Stale states. Only Coach topics
-are streamed while that tab is selected. No MQTT commands are published.
+are streamed while that tab is selected. Tank widgets have no actions.
 The fake scenario does not supply these coach entity topics; use a broker
 with real coach telemetry to exercise the shipped Coach tab.
 
@@ -326,7 +327,7 @@ dial centered on 120 V at the top, use `min: 90` and `max: 150` (the midpoint
 of the symmetric needle sweep is 120). This changes the displayed scale only,
 not the telemetry value or protection settings.
 
-## Read-only lights
+## Coach light controls
 
 Use `type: light` to show a bulb indicator and On/Off status. Bind
 `payload_path` to either a boolean or an entity state object:
@@ -345,10 +346,14 @@ A null or absent level means brightness is unavailable, not zero.
 Off takes precedence over a remembered brightness level and dims the bulb.
 Missing values show No data; malformed states show Invalid input.
 Stale readings retain their last status with a Stale badge and muted display.
-There are no buttons, sliders, or MQTT commands.
+In the shipped Coach dashboard, clicking the bulb toggles its light and
+right-clicking it opens the configured action menu (`Turn on`, `Turn off`).
+An **Actions** button provides the same menu on touch devices. The display is
+telemetry-driven; sending a command does not optimistically change the reported
+state. The result message reports dispatch, not physical confirmation.
 
 The live and example Coach tabs have **Tank Levels**, **Lights**, **Fans**,
-and **Generator** parent cards. Lights contains three read-only lighting cards:
+and **Generator** parent cards. Lights contains three lighting cards:
 
 | Group | Lights |
 | --- | --- |
@@ -360,7 +365,39 @@ The cards appear side by side on larger screens and reflow on smaller screens.
 Each light binds to its own `rv/coach/entity/<entity>_light` topic and reads
 `state`. Awning uses `awning_light`, not the awning motor entity.
 Like the coach tanks, these require real entity telemetry; the fake scenario
-does not currently supply these topics.
+does not currently supply these topics. Dashboard `controls` are allow-listed
+per widget. They name an entity target and semantic action; they cannot specify
+an MQTT topic or payload.
+
+### Enable command publishing
+
+Commands are disabled by default. To enable them:
+
+1. Configure RV-Control's Coach command API and grant the
+   `rv-control-web` controller identity only the entity actions you want the
+   dashboard to offer. Broker ACLs must restrict `rv/coach/command` publication
+   and the matching result subscriptions to this backend.
+2. For a protected deployment, enable authentication and create the external
+   account file as described in [authentication.md](authentication.md). Every
+   configured account can use the dashboard's configured controls; this
+   release has no per-user roles. For isolated local testing, authentication
+   can remain disabled; anyone who can reach the UI can invoke configured
+   controls, so bind it to loopback and do not expose it to a LAN or the
+   Internet.
+3. In the backend runtime config, set:
+
+   ```yaml
+   mqtt:
+     client_id: rv-control-web
+     commands_enabled: true
+     command_client_id: rv-control-web
+   ```
+
+The backend subscribes to the command's correlated result topic before sending
+one non-retained QoS 1 request to `rv/coach/command`. It never retries a
+command. A timeout means the outcome is unknown; inspect live telemetry before
+manually issuing a new action. Keep command publishing disabled in the
+fake-broker test setup.
 
 ## Read-only fans and kitchen lid
 

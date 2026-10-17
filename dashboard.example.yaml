@@ -184,14 +184,26 @@ tabs:
                       label: Cargo
                       topic: rv/coach/entity/cargo_light
                       payload_path: state
+                      controls:
+                        - {id: cargo_light_toggle, target: cargo_light, action: toggle, label: Toggle}
+                        - {id: cargo_light_on, target: cargo_light, action: on, label: Turn on}
+                        - {id: cargo_light_off, target: cargo_light, action: off, label: Turn off}
                     - type: light
                       label: Step
                       topic: rv/coach/entity/step_light
                       payload_path: state
+                      controls:
+                        - {id: step_light_toggle, target: step_light, action: toggle, label: Toggle}
+                        - {id: step_light_on, target: step_light, action: on, label: Turn on}
+                        - {id: step_light_off, target: step_light, action: off, label: Turn off}
                     - type: light
                       label: Awning
                       topic: rv/coach/entity/awning_light
                       payload_path: state
+                      controls:
+                        - {id: awning_light_toggle, target: awning_light, action: toggle, label: Toggle}
+                        - {id: awning_light_on, target: awning_light, action: on, label: Turn on}
+                        - {id: awning_light_off, target: awning_light, action: off, label: Turn off}
                 - type: card
                   title: Main
                   span: 1
@@ -200,26 +212,50 @@ tabs:
                       label: Living Ceiling
                       topic: rv/coach/entity/living_ceiling_light
                       payload_path: state
+                      controls:
+                        - {id: living_ceiling_light_toggle, target: living_ceiling_light, action: toggle, label: Toggle}
+                        - {id: living_ceiling_light_on, target: living_ceiling_light, action: on, label: Turn on}
+                        - {id: living_ceiling_light_off, target: living_ceiling_light, action: off, label: Turn off}
                     - type: light
                       label: Hall
                       topic: rv/coach/entity/hall_light
                       payload_path: state
+                      controls:
+                        - {id: hall_light_toggle, target: hall_light, action: toggle, label: Toggle}
+                        - {id: hall_light_on, target: hall_light, action: on, label: Turn on}
+                        - {id: hall_light_off, target: hall_light, action: off, label: Turn off}
                     - type: light
                       label: Dinette
                       topic: rv/coach/entity/dinette_light
                       payload_path: state
+                      controls:
+                        - {id: dinette_light_toggle, target: dinette_light, action: toggle, label: Toggle}
+                        - {id: dinette_light_on, target: dinette_light, action: on, label: Turn on}
+                        - {id: dinette_light_off, target: dinette_light, action: off, label: Turn off}
                     - type: light
                       label: Kitchen
                       topic: rv/coach/entity/kitchen_light
                       payload_path: state
+                      controls:
+                        - {id: kitchen_light_toggle, target: kitchen_light, action: toggle, label: Toggle}
+                        - {id: kitchen_light_on, target: kitchen_light, action: on, label: Turn on}
+                        - {id: kitchen_light_off, target: kitchen_light, action: off, label: Turn off}
                     - type: light
                       label: Sofa
                       topic: rv/coach/entity/sofa_light
                       payload_path: state
+                      controls:
+                        - {id: sofa_light_toggle, target: sofa_light, action: toggle, label: Toggle}
+                        - {id: sofa_light_on, target: sofa_light, action: on, label: Turn on}
+                        - {id: sofa_light_off, target: sofa_light, action: off, label: Turn off}
                     - type: light
                       label: Accent
                       topic: rv/coach/entity/accent_light
                       payload_path: state
+                      controls:
+                        - {id: accent_light_toggle, target: accent_light, action: toggle, label: Toggle}
+                        - {id: accent_light_on, target: accent_light, action: on, label: Turn on}
+                        - {id: accent_light_off, target: accent_light, action: off, label: Turn off}
                 - type: card
                   title: Rear
                   span: 1
@@ -228,18 +264,34 @@ tabs:
                       label: Bedroom ceiling
                       topic: rv/coach/entity/bedroom_ceiling_light
                       payload_path: state
+                      controls:
+                        - {id: bedroom_ceiling_light_toggle, target: bedroom_ceiling_light, action: toggle, label: Toggle}
+                        - {id: bedroom_ceiling_light_on, target: bedroom_ceiling_light, action: on, label: Turn on}
+                        - {id: bedroom_ceiling_light_off, target: bedroom_ceiling_light, action: off, label: Turn off}
                     - type: light
                       label: Rear Bath
                       topic: rv/coach/entity/rear_bath_light
                       payload_path: state
+                      controls:
+                        - {id: rear_bath_light_toggle, target: rear_bath_light, action: toggle, label: Toggle}
+                        - {id: rear_bath_light_on, target: rear_bath_light, action: on, label: Turn on}
+                        - {id: rear_bath_light_off, target: rear_bath_light, action: off, label: Turn off}
                     - type: light
                       label: Mid Bath
                       topic: rv/coach/entity/mid_bath_light
                       payload_path: state
+                      controls:
+                        - {id: mid_bath_light_toggle, target: mid_bath_light, action: toggle, label: Toggle}
+                        - {id: mid_bath_light_on, target: mid_bath_light, action: on, label: Turn on}
+                        - {id: mid_bath_light_off, target: mid_bath_light, action: off, label: Turn off}
                     - type: light
                       label: Vanity
                       topic: rv/coach/entity/vanity_light
                       payload_path: state
+                      controls:
+                        - {id: vanity_light_toggle, target: vanity_light, action: toggle, label: Toggle}
+                        - {id: vanity_light_on, target: vanity_light, action: on, label: Turn on}
+                        - {id: vanity_light_off, target: vanity_light, action: off, label: Turn off}
         - type: card
           title: Fans
           children:

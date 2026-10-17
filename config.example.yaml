@@ -4,7 +4,10 @@ server:
 mqtt:
   host: 127.0.0.1
   port: 1883
-  client_id: mqtt-dashboard
+  client_id: rv-control-web
+  # Set true only after enabling Coach commands and the rv-control-web policy.
+  commands_enabled: false
+  command_client_id: rv-control-web
 stream:
   tick_hz: 12
   stale_after_ms: 10000

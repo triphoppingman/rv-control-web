@@ -111,7 +111,9 @@ Edit the external `config.yaml`:
 mqtt:
   host: host.docker.internal
   port: 1883
-  client_id: mqtt-dashboard
+  client_id: rv-control-web
+  commands_enabled: false
+  command_client_id: rv-control-web
 stream:
   tick_hz: 12
   stale_after_ms: 10000
@@ -269,10 +271,7 @@ The UI config uses:
 
 ```yaml
 auth:
-  credentials_file: ./auth-users.yaml
-  origins:
-    - http://127.0.0.1:8000
-  secure_cookie: false
+  enabled: false
 ```
 
 Supply Compose values directly or use an untracked environment file:
@@ -291,9 +290,12 @@ must be free: stop a previous local Uvicorn process or standalone
 standalone container, stop it with `docker stop rv-control-web`; do not delete
 unrelated containers.
 
-The UI-only stack defaults to a localhost host-port bind. It has authentication
-but no TLS proxy. Do not expose this HTTP setup to a LAN or the Internet.
-For production use the Traefik stack and HTTPS settings above.
+The UI-only stack defaults to a localhost host-port bind and disables
+authentication. MQTT command publishing remains disabled until
+`mqtt.commands_enabled: true` is explicitly set in the external config. When
+enabled, anyone who can reach the UI can request configured Coach actions.
+Keep this setup on loopback and do not expose it to a LAN or the Internet.
+For production use the Traefik stack, HTTPS, and authentication settings above.
 
 ## Troubleshooting
 

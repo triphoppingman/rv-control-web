@@ -14,6 +14,11 @@
   export let now;
   export let staleAfter = 10000;
   export let theme = 'light';
+  export let connected = false;
+  export let commandControlsEnabled = false;
+  export let commandBusy = false;
+  export let commandResults = {};
+  export let sendControl = () => {};
 
   const palette = { red: '#c6534b', amber: '#c68529', green: '#147d73', blue: '#3275a4', gray: '#788a86' };
 
@@ -109,7 +114,8 @@
         <header class="card-header"><h2>{node.title}</h2>{#if node.subtitle}<p>{node.subtitle}</p>{/if}</header>
       {/if}
       {#each node.children || [] as child, index (child.id || index)}
-        <svelte:self node={child} {values} {now} {staleAfter} {theme} />
+        <svelte:self node={child} {values} {now} {staleAfter} {theme}
+          {connected} {commandControlsEnabled} {commandBusy} {commandResults} {sendControl} />
       {/each}
     </div>
   {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline', 'derived', 'tank', 'light', 'fan', 'generator'].includes(node.type)}
@@ -120,7 +126,9 @@
       {:else if node.type === 'fan'}
         <Fan value={missing || invalid ? null : value} showLid={!!node.lid_topic} {lid} {lidStale} />
       {:else if node.type === 'light'}
-        <Light value={missing || invalid ? null : value} />
+        <Light value={missing || invalid ? null : value} label={node.label || 'Light'}
+          controls={node.controls || []} controlsEnabled={commandControlsEnabled}
+          {connected} {commandBusy} {commandResults} sendControl={sendControl} />
       {:else if node.type === 'boolean'}
         <div class="boolean-value" class:on={!missing && (node.on_when === undefined ? !!value : value === node.on_when)}>
           <span class="indicator"></span>{missing ? '--' : (node.on_when === undefined ? !!value : value === node.on_when) ? (node.true_label || 'On') : (node.false_label || 'Off')}
@@ -143,6 +151,19 @@
             timestamp={record?.ts == null ? null : record.ts * 1000} />
         {/if}
         <div class="reading">{missing || invalid ? '--' : format(value, node.decimals)}{#if node.unit}<small>{node.unit}</small>{/if}</div>
+      {/if}
+      {#if node.controls?.length && node.type !== 'light'}
+        <div class="control-actions" aria-label={`${node.label || 'Entity'} controls`}>
+          {#each node.controls as control (control.id)}
+            <button type="button" disabled={!commandControlsEnabled || !connected || commandBusy}
+              title={!commandControlsEnabled ? 'Controls are disabled by server configuration' : undefined}
+              on:click={() => sendControl(control)}>{control.label}</button>
+            {#if commandResults[control.id]}
+              <span class="control-result" class:failed={commandResults[control.id].status !== 'completed'}
+                role="status">{commandResults[control.id].message}</span>
+            {/if}
+          {/each}
+        </div>
       {/if}
     </div>
   {:else if node.type === 'map'}

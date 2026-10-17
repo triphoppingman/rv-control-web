@@ -28,6 +28,8 @@ STATIC = {"text", "image", "icon", "divider", "spacer"}
 MAP_ORIENTATIONS = {"north_up", "heading_up"}
 ALTITUDE_UNITS = {"ft", "m"}
 SPEED_UNITS = {"mph", "km/h", "kt"}
+COACH_ENTITY_PREFIX = "rv/coach/entity/"
+IDENTIFIER = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 def is_finite_number(value: Any) -> bool:
@@ -47,6 +49,7 @@ def load_dashboard(path: Path, assets_dir: Path) -> tuple[dict[str, Any], dict[s
         raise ValueError("dashboard: tabs must be a non-empty list")
     seen_tabs: set[str] = set()
     seen_nodes: set[str] = set()
+    seen_controls: set[str] = set()
     tab_topics: dict[str, set[str]] = {}
     for index, tab in enumerate(data["tabs"]):
         location = f"tabs[{index}]"
@@ -56,13 +59,20 @@ def load_dashboard(path: Path, assets_dir: Path) -> tuple[dict[str, Any], dict[s
             raise ValueError(f"{location}: duplicate tab id {tab['id']}")
         seen_tabs.add(tab["id"])
         topics: set[str] = set()
-        validate_node(tab.get("root"), f"{location}.root", topics, seen_nodes, assets_dir)
+        validate_node(
+            tab.get("root"), f"{location}.root", topics, seen_nodes, seen_controls, assets_dir
+        )
         tab_topics[tab["id"]] = topics
     return data, tab_topics
 
 
 def validate_node(
-    node: Any, location: str, topics: set[str], seen_nodes: set[str], assets_dir: Path
+    node: Any,
+    location: str,
+    topics: set[str],
+    seen_nodes: set[str],
+    seen_controls: set[str],
+    assets_dir: Path,
 ) -> None:
     """Validate one node and recursively validate its children."""
     if not isinstance(node, dict):
@@ -82,6 +92,55 @@ def validate_node(
             if not isinstance(node.get(field), str) or not node[field].strip():
                 raise ValueError(f"{location}: {field} is required for a lid binding")
         topics.add(node["lid_topic"])
+    controls = node.get("controls")
+    if controls is not None:
+        if kind not in BOUND or not isinstance(controls, list) or not controls:
+            raise ValueError(f"{location}: controls must be a non-empty list on a bound widget")
+        allowed_targets = {
+            topic[len(COACH_ENTITY_PREFIX):]
+            for topic in (node.get("topic"),)
+            if isinstance(topic, str) and topic.startswith(COACH_ENTITY_PREFIX)
+        }
+        for index, control in enumerate(controls):
+            control_location = f"{location}.controls[{index}]"
+            if not isinstance(control, dict) or set(control) - {
+                "id", "target", "action", "label", "params", "confirm"
+            }:
+                raise ValueError(f"{control_location}: expected id, target, action, label, params, and confirm fields")
+            control_id = control.get("id")
+            if (
+                not isinstance(control_id, str) or not IDENTIFIER.fullmatch(control_id)
+                or control_id in seen_controls
+            ):
+                raise ValueError(f"{control_location}: id must be unique and match [A-Za-z0-9_-]{{1,64}}")
+            seen_controls.add(control_id)
+            target = control.get("target")
+            if (
+                not isinstance(target, str) or not IDENTIFIER.fullmatch(target)
+                or target not in allowed_targets
+            ):
+                raise ValueError(f"{control_location}: target must match this widget's Coach entity topic")
+            action = control.get("action")
+            if not isinstance(action, str) or not IDENTIFIER.fullmatch(action):
+                raise ValueError(f"{control_location}: action must match [A-Za-z0-9_-]{{1,64}}")
+            label = control.get("label", action.replace("_", " ").title())
+            if not isinstance(label, str) or not label.strip() or len(label) > 64:
+                raise ValueError(f"{control_location}: label must be a non-empty string of at most 64 characters")
+            params = control.get("params", {})
+            if not isinstance(params, dict) or any(
+                not isinstance(name, str) or not IDENTIFIER.fullmatch(name)
+                or isinstance(value, (dict, list)) or value is None
+                or not isinstance(value, (str, int, float, bool))
+                or isinstance(value, float) and not math.isfinite(value)
+                for name, value in params.items()
+            ):
+                raise ValueError(f"{control_location}: params must contain only finite scalar values")
+            confirm = control.get("confirm", False)
+            if not isinstance(confirm, bool):
+                raise ValueError(f"{control_location}: confirm must be a boolean")
+            control.setdefault("label", label)
+            control.setdefault("params", params)
+            control.setdefault("confirm", confirm)
     node_id = node.get("id")
     if node_id is not None:
         if not isinstance(node_id, str) or not node_id or node_id in seen_nodes:
@@ -93,7 +152,9 @@ def validate_node(
         if not isinstance(node.get("children"), list):
             raise ValueError(f"{location}: children must be a list")
         for index, child in enumerate(node["children"]):
-            validate_node(child, f"{location}.children[{index}]", topics, seen_nodes, assets_dir)
+            validate_node(
+                child, f"{location}.children[{index}]", topics, seen_nodes, seen_controls, assets_dir
+            )
     elif kind in BOUND:
         for field in ("topic", "payload_path"):
             if not isinstance(node.get(field), str) or not node[field].strip():
@@ -173,7 +234,26 @@ def validate_node(
     else:
         if "topic" in node or "payload_path" in node:
             raise ValueError(f"{location}: static widgets cannot bind to a topic")
+        if controls is not None:
+            raise ValueError(f"{location}: controls are only supported on Coach entity widgets")
         if kind == "image":
             source = node.get("src")
             if not isinstance(source, str) or not source or not (assets_dir / source).resolve().is_relative_to(assets_dir.resolve()):
                 raise ValueError(f"{location}: image src must be below assets_dir")
+
+
+def dashboard_controls(data: dict[str, Any]) -> dict[str, dict[str, dict[str, Any]]]:
+    """Return validated control definitions grouped by tab and control ID."""
+    controls: dict[str, dict[str, dict[str, Any]]] = {}
+
+    def visit(node: dict[str, Any], tab_controls: dict[str, dict[str, Any]]) -> None:
+        for control in node.get("controls", []):
+            tab_controls[control["id"]] = control
+        for child in node.get("children", []):
+            visit(child, tab_controls)
+
+    for tab in data["tabs"]:
+        tab_controls: dict[str, dict[str, Any]] = {}
+        visit(tab["root"], tab_controls)
+        controls[tab["id"]] = tab_controls
+    return controls

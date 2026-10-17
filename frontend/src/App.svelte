@@ -6,6 +6,10 @@
   let active;
   let values = {};
   let connected = false;
+  let commandControlsEnabled = false;
+  let commandBusy = false;
+  let pendingControlId = null;
+  let commandResults = {};
   let error = '';
   let now = Date.now();
   let socket;
@@ -51,6 +55,10 @@
     active = undefined;
     values = {};
     connected = false;
+    commandControlsEnabled = false;
+    commandBusy = false;
+    pendingControlId = null;
+    commandResults = {};
   }
 
   async function requestSession() {
@@ -135,6 +143,20 @@
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'subscribe', tab: tab.id }));
   }
 
+  function sendControl(control) {
+    if (!commandControlsEnabled || !connected || commandBusy || socket?.readyState !== WebSocket.OPEN) return;
+    if (control.confirm && !window.confirm(`Send ${control.action} to ${control.target}?`)) return;
+    commandBusy = true;
+    pendingControlId = control.id;
+    commandResults = {
+      ...commandResults,
+      [control.id]: { status: 'sending', message: 'Sending command...' },
+    };
+    socket.send(JSON.stringify({
+      type: 'command', action_id: control.id, confirmed: control.confirm,
+    }));
+  }
+
   function connect() {
     if (stopped || !authenticated) return;
     const current = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
@@ -150,6 +172,18 @@
       const message = JSON.parse(event.data);
       if (message.type === 'config') {
         applyDashboard(message.config);
+        commandControlsEnabled = message.config.command_controls_enabled === true;
+        return;
+      }
+      if (message.type === 'command_result') {
+        if (pendingControlId === message.action_id) {
+          commandBusy = false;
+          pendingControlId = null;
+        }
+        commandResults = {
+          ...commandResults,
+          [message.action_id]: { status: message.status, message: message.message },
+        };
         return;
       }
       // A snapshot replaces current-tab state; later updates merge by topic.
@@ -167,6 +201,17 @@
       if (socket !== current) return;
       connected = false;
       values = {};
+      if (pendingControlId) {
+        commandResults = {
+          ...commandResults,
+          [pendingControlId]: {
+            status: 'failed',
+            message: 'Connection closed; action outcome is unknown. Check live state before retrying.',
+          },
+        };
+        pendingControlId = null;
+        commandBusy = false;
+      }
       if (!stopped) {
         // Reconnect with capped backoff; onopen subscribes to the current tab again.
         retry = setTimeout(async () => {
@@ -239,7 +284,9 @@
       {#if active}
         <div class="page-heading"><div><div class="eyebrow">SYSTEM OVERVIEW</div><h1>{active.label || active.id}</h1></div><time>{new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
         <!-- Remount the tree on tab changes so chart history belongs to one tab. -->
-        {#key `${configRevision}:${active.id}`}<Node node={active.root} {values} {now} staleAfter={config.stream?.stale_after_ms ?? 10000} theme={effectiveTheme} />{/key}
+        {#key `${configRevision}:${active.id}`}<Node node={active.root} {values} {now}
+          staleAfter={config.stream?.stale_after_ms ?? 10000} theme={effectiveTheme} {connected}
+          {commandControlsEnabled} {commandBusy} {commandResults} sendControl={sendControl} />{/key}
       {/if}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
     </main>

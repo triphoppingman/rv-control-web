@@ -1,9 +1,9 @@
 # Viewer login
 
-The application supports one to three named accounts with identical read-only
-dashboard access. There are no roles, registration, password-reset emails, or
-account-management screens. Configuration and password hashes live outside the
-image; they are loaded at backend startup.
+The application supports one to three named accounts with identical access to
+the configured dashboard and Coach actions. There are no roles, registration,
+password-reset emails, or account-management screens. Configuration and
+password hashes live outside the image; they are loaded at backend startup.
 
 For preparing the full external configuration directory and bringing up
 production with Docker Compose, follow the
@@ -136,6 +136,9 @@ There is no silent anonymous fallback.
 The [fake-data test configuration](../config.test.yaml) explicitly contains
 `auth.enabled: false`. This preserves the anonymous local testing workflow and
 logs a warning at startup. Do not use that setting for a deployed application.
+When authentication is disabled and MQTT commands are enabled, any viewer who
+can reach the application can use configured controls. Restrict this combination
+to an isolated local test network.
 To test login locally, copy the test configuration to a local file, replace its
 disabled `auth` section with the loopback example above, create credentials,
 and start the backend with `RV_WEB_CONFIG` pointing to that file.

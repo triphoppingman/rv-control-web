@@ -1,6 +1,7 @@
 # RV Control Web
 
-Read-only live MQTT dashboard with a Python/FastAPI backend and Svelte frontend.
+Live MQTT dashboard with a Python/FastAPI backend and Svelte frontend. Coach
+entity commands are configurable and disabled by default.
 Configure the broker in `config.yaml` and widget bindings in `dashboard.yaml`.
 The example topics must be adapted to the payloads your devices publish.
 
