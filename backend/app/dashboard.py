@@ -104,9 +104,11 @@ def validate_node(
         for index, control in enumerate(controls):
             control_location = f"{location}.controls[{index}]"
             if not isinstance(control, dict) or set(control) - {
-                "id", "target", "action", "label", "params", "confirm"
+                "id", "target", "action", "label", "params", "confirm", "input"
             }:
-                raise ValueError(f"{control_location}: expected id, target, action, label, params, and confirm fields")
+                raise ValueError(
+                    f"{control_location}: expected id, target, action, label, params, confirm, and input fields"
+                )
             control_id = control.get("id")
             if (
                 not isinstance(control_id, str) or not IDENTIFIER.fullmatch(control_id)
@@ -135,12 +137,40 @@ def validate_node(
                 for name, value in params.items()
             ):
                 raise ValueError(f"{control_location}: params must contain only finite scalar values")
+            control_input = control.get("input")
+            if control_input is not None:
+                if (
+                    not isinstance(control_input, dict)
+                    or set(control_input) != {"type", "param", "min", "max", "step"}
+                    or control_input.get("type") != "slider"
+                    or not isinstance(control_input.get("param"), str)
+                    or not IDENTIFIER.fullmatch(control_input["param"])
+                    or control_input["param"] in params
+                    or not is_finite_number(control_input.get("min"))
+                    or not is_finite_number(control_input.get("max"))
+                    or not is_finite_number(control_input.get("step"))
+                    or control_input["min"] >= control_input["max"]
+                    or control_input["step"] <= 0
+                    or not is_finite_number(control_input["max"] - control_input["min"])
+                    or not is_finite_number(
+                        (control_input["max"] - control_input["min"]) / control_input["step"]
+                    )
+                    or not math.isclose(
+                        (control_input["max"] - control_input["min"]) / control_input["step"],
+                        round((control_input["max"] - control_input["min"]) / control_input["step"]),
+                    )
+                ):
+                    raise ValueError(
+                        f"{control_location}: input must define a valid slider param, min, max, and step"
+                    )
             confirm = control.get("confirm", False)
             if not isinstance(confirm, bool):
                 raise ValueError(f"{control_location}: confirm must be a boolean")
             control.setdefault("label", label)
             control.setdefault("params", params)
             control.setdefault("confirm", confirm)
+            if control_input is not None:
+                control.setdefault("input", control_input)
     node_id = node.get("id")
     if node_id is not None:
         if not isinstance(node_id, str) or not node_id or node_id in seen_nodes:

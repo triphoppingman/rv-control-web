@@ -143,7 +143,7 @@
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'subscribe', tab: tab.id }));
   }
 
-  function sendControl(control) {
+  function sendControl(control, value) {
     if (!commandControlsEnabled || !connected || commandBusy || socket?.readyState !== WebSocket.OPEN) return;
     if (control.confirm && !window.confirm(`Send ${control.action} to ${control.target}?`)) return;
     commandBusy = true;
@@ -152,9 +152,11 @@
       ...commandResults,
       [control.id]: { status: 'sending', message: 'Sending command...' },
     };
-    socket.send(JSON.stringify({
+    const message = {
       type: 'command', action_id: control.id, confirmed: control.confirm,
-    }));
+    };
+    if (value !== undefined) message.value = value;
+    socket.send(JSON.stringify(message));
   }
 
   function connect() {

@@ -50,6 +50,31 @@ class DashboardControlTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "target must match"):
                 load_dashboard(path, root)
 
+    def test_slider_input_requires_a_finite_range_and_step(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "dashboard.yaml"
+            dashboard = {"tabs": [{"id": "coach", "root": {
+                "type": "light",
+                "topic": "rv/coach/entity/living_ceiling_light",
+                "payload_path": "state",
+                "controls": [{
+                    "id": "living_ceiling_brightness",
+                    "target": "living_ceiling_light",
+                    "action": "brightness",
+                    "input": {"type": "slider", "param": "level", "min": 0, "max": 100, "step": 1},
+                }],
+            }}]}
+            path.write_text(yaml.safe_dump(dashboard))
+            loaded, _ = load_dashboard(path, root)
+            action = dashboard_controls(loaded)["coach"]["living_ceiling_brightness"]
+            self.assertEqual(action["input"]["param"], "level")
+
+            dashboard["tabs"][0]["root"]["controls"][0]["input"]["step"] = 0
+            path.write_text(yaml.safe_dump(dashboard))
+            with self.assertRaisesRegex(ValueError, "input must define a valid slider"):
+                load_dashboard(path, root)
+
 
 class CommandPublishingTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
@@ -147,6 +172,27 @@ class CommandPublishingTests(unittest.IsolatedAsyncioTestCase):
         self.broker.publish.assert_awaited_once()
         self.broker.unsubscribe.assert_awaited_once()
 
+    async def test_slider_value_is_sent_as_the_configured_action_parameter(self) -> None:
+        self.control["input"] = {
+            "type": "slider", "param": "level", "min": 0, "max": 100, "step": 1,
+        }
+        result = await main.submit_control(self.viewer, self.control["id"], False, 37)
+
+        self.assertEqual(result["status"], "completed")
+        request = json.loads(self.broker.publish.await_args.args[1])
+        self.assertEqual(request["params"], {"level": 37})
+
+    async def test_slider_rejects_values_outside_range_or_off_step(self) -> None:
+        self.control["input"] = {
+            "type": "slider", "param": "level", "min": 0, "max": 100, "step": 5,
+        }
+        outside_range = await main.submit_control(self.viewer, self.control["id"], False, 102)
+        off_step = await main.submit_control(self.viewer, self.control["id"], False, 37)
+
+        self.assertEqual(outside_range["code"], "invalid_params")
+        self.assertEqual(off_step["code"], "invalid_params")
+        self.broker.publish.assert_not_awaited()
+
     async def test_result_parser_rejects_bad_correlation_and_retained_results(self) -> None:
         request = {
             "version": 1, "client_id": "rv-control-web", "request_id": "req-1",
@@ -169,8 +215,9 @@ class CommandPublishingTests(unittest.IsolatedAsyncioTestCase):
 class CommandWebSocketTests(unittest.TestCase):
     def test_unauthenticated_browser_command_uses_dashboard_action_and_returns_result(self) -> None:
         control = {
-            "id": "kitchen_light_toggle", "target": "kitchen_light", "action": "toggle",
-            "label": "Toggle", "params": {}, "confirm": False,
+            "id": "living_ceiling_light_brightness", "target": "living_ceiling_light",
+            "action": "brightness", "label": "Brightness", "params": {}, "confirm": False,
+            "input": {"type": "slider", "param": "level", "min": 0, "max": 100, "step": 1},
         }
         broker = AsyncMock()
 
@@ -202,7 +249,7 @@ class CommandWebSocketTests(unittest.TestCase):
             patch.object(main, "command_client_id", "rv-control-web"),
             patch.object(main, "mqtt_client", broker),
             patch.object(main, "mqtt_connected", True),
-            patch.object(main, "tab_topics", {"coach": {"rv/coach/entity/kitchen_light"}}),
+            patch.object(main, "tab_topics", {"coach": {"rv/coach/entity/living_ceiling_light"}}),
             patch.object(main, "tab_controls", {"coach": {control["id"]: control}}),
             patch.object(main, "pending_command_results", {}),
             patch.object(main, "active_command_id", None),
@@ -215,12 +262,14 @@ class CommandWebSocketTests(unittest.TestCase):
                     socket.send_json({"type": "subscribe", "tab": "coach"})
                     self.assertEqual(socket.receive_json()["type"], "snapshot")
                     socket.send_json({
-                        "type": "command", "action_id": "kitchen_light_toggle",
-                        "confirmed": False,
+                        "type": "command", "action_id": "living_ceiling_light_brightness",
+                        "confirmed": False, "value": 37,
                     })
                     result = socket.receive_json()
 
         self.assertEqual(result["type"], "command_result")
-        self.assertEqual(result["target"], "kitchen_light")
-        self.assertEqual(result["action"], "toggle")
+        self.assertEqual(result["target"], "living_ceiling_light")
+        self.assertEqual(result["action"], "brightness")
+        request = json.loads(broker.publish.await_args.args[1])
+        self.assertEqual(request["params"], {"level": 37})
         broker.publish.assert_awaited_once()

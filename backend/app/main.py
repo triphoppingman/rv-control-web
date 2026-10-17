@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -23,7 +24,7 @@ from starlette.requests import HTTPConnection
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .auth import Auth, COOKIE_NAME, SESSION_SECONDS
-from .dashboard import dashboard_controls, load_dashboard
+from .dashboard import dashboard_controls, is_finite_number, load_dashboard
 
 
 CONFIG_PATH = Path(os.environ.get("RV_WEB_CONFIG", "config.yaml")).resolve()
@@ -166,7 +167,9 @@ def _control_result(
     }
 
 
-async def submit_control(viewer: Viewer, action_id: str, confirmed: bool) -> dict[str, Any]:
+async def submit_control(
+    viewer: Viewer, action_id: str, confirmed: bool, value: Any = None
+) -> dict[str, Any]:
     """Publish one configured action and wait for its correlated result."""
     global active_command_id
     control = tab_controls.get(viewer.tab, {}).get(action_id) if viewer.tab else None
@@ -185,6 +188,28 @@ async def submit_control(viewer: Viewer, action_id: str, confirmed: bool) -> dic
             action_id, control, "rejected", "confirmation_required",
             "The confirmation state did not match this control.", "not_started",
         )
+    control_input = control.get("input")
+    if control_input is None:
+        if value is not None:
+            return _control_result(
+                action_id, control, "rejected", "invalid_params",
+                "This control does not accept a value.", "not_started",
+            )
+        params = control["params"]
+    else:
+        minimum, maximum, step = (
+            control_input["min"], control_input["max"], control_input["step"]
+        )
+        steps = (value - minimum) / step if is_finite_number(value) else None
+        if (
+            steps is None or value < minimum or value > maximum
+            or not math.isclose(steps, round(steps))
+        ):
+            return _control_result(
+                action_id, control, "rejected", "invalid_params",
+                "The selected value is outside the configured slider range or step.", "not_started",
+            )
+        params = {**control["params"], control_input["param"]: value}
     if active_command_id is not None:
         return _control_result(
             action_id, control, "rejected", "busy", "Another Coach command is in progress.",
@@ -208,7 +233,7 @@ async def submit_control(viewer: Viewer, action_id: str, confirmed: bool) -> dic
         "expires_at": expires.isoformat().replace("+00:00", "Z"),
         "target": control["target"],
         "action": control["action"],
-        "params": control["params"],
+        "params": params,
         "confirmed": control["confirm"],
     }
     result_topic = f"rv/coach/result/{command_client_id}/{request_id}"
@@ -570,6 +595,7 @@ async def websocket(socket: WebSocket) -> None:
             if message.get("type") == "command":
                 action_id = message.get("action_id")
                 confirmed = message.get("confirmed")
+                value = message.get("value")
                 if (
                     not isinstance(action_id, str) or len(action_id) > 64
                     or not isinstance(confirmed, bool)
@@ -579,7 +605,7 @@ async def websocket(socket: WebSocket) -> None:
                         "message": "Command messages require an action_id and boolean confirmed value.",
                     })
                     continue
-                await viewer.send(await submit_control(viewer, action_id, confirmed))
+                await viewer.send(await submit_control(viewer, action_id, confirmed, value))
                 continue
             if message.get("type") not in {"subscribe", "unsubscribe"}:
                 await viewer.send({"type": "error", "code": "invalid_message", "message": "Expected subscribe, unsubscribe, or command."})

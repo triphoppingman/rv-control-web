@@ -352,6 +352,21 @@ An **Actions** button provides the same menu on touch devices. The display is
 telemetry-driven; sending a command does not optimistically change the reported
 state. The result message reports dispatch, not physical confirmation.
 
+For a dimmable light, configure an `input` slider on its brightness control.
+The selected level is sent once when the slider is released:
+
+```yaml
+- id: living_ceiling_light_brightness
+  target: living_ceiling_light
+  action: brightness
+  label: Brightness
+  input: {type: slider, param: level, min: 0, max: 100, step: 1}
+```
+
+The backend validates the submitted value against the configured range and
+step before adding it to the MQTT command parameters. Only configure sliders
+for lights whose RV-Control mapping and controller policy permit brightness.
+
 The live and example Coach tabs have **Tank Levels**, **Lights**, **Fans**,
 and **Generator** parent cards. Lights contains three lighting cards:
 

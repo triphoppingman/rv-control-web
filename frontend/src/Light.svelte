@@ -14,9 +14,11 @@
     && (level == null || (typeof level === 'number' && Number.isFinite(level) && level >= 0 && level <= 100));
   $: brightness = valid && on ? (level ?? 100) : 0;
   $: toggleControl = controls.find((control) => control.action === 'toggle');
-  $: menuControls = controls.filter((control) => control.action !== 'toggle');
+  $: sliderControls = controls.filter((control) => control.input?.type === 'slider');
+  $: menuControls = controls.filter((control) => control.action !== 'toggle' && control.input?.type !== 'slider');
   let menuOpen = false;
   let controlRoot;
+  let sliderValues = {};
 
   function openMenu(event) {
     if (menuControls.length) {
@@ -25,9 +27,17 @@
     }
   }
 
-  function run(control) {
+  function run(control, value) {
     menuOpen = false;
-    sendControl(control);
+    sendControl(control, value);
+  }
+
+  function setSliderValue(control, event) {
+    sliderValues = { ...sliderValues, [control.id]: Number(event.currentTarget.value) };
+  }
+
+  function submitSlider(control) {
+    run(control, sliderValues[control.id]);
   }
 
   function dismissMenu(event) {
@@ -87,6 +97,17 @@
     </div>
   {/if}
 </div>
+{#each sliderControls as control (control.id)}
+  <label class="light-dimmer">
+    <span>{control.label}: {sliderValues[control.id] ?? (valid && level != null ? level : control.input.max)}%</span>
+    <input type="range" min={control.input.min} max={control.input.max} step={control.input.step}
+      value={sliderValues[control.id] ?? (valid && level != null ? level : control.input.max)}
+      aria-label={`${label} ${control.label}`}
+      disabled={!controlsEnabled || !connected || commandBusy}
+      on:input={(event) => setSliderValue(control, event)}
+      on:change={() => submitSlider(control)} />
+  </label>
+{/each}
 {#each controls as control (control.id)}
   {#if commandResults[control.id]}
     <p class="light-command-result" class:failed={commandResults[control.id].status !== 'completed'}
@@ -112,5 +133,7 @@
   .light-menu button:hover, .light-menu-trigger:hover { border-color: var(--accent, #147d73); }
   .light-command-result { margin: 8px 0 0; color: var(--color-text-muted); font-size: 11px; }
   .light-command-result.failed { color: var(--color-error); }
+  .light-dimmer { display: grid; grid-template-columns: auto minmax(100px, 1fr); align-items: center; gap: 12px; margin-top: 12px; color: var(--color-text-muted); font-size: 12px; }
+  .light-dimmer input { width: 100%; accent-color: var(--accent, #147d73); }
   :global(.stale) .light-status { opacity: 0.55; }
 </style>
