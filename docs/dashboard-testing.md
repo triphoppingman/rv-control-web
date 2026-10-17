@@ -366,13 +366,17 @@ The selected level is sent once when the slider is released:
 The backend validates the submitted value against the configured range and
 step before adding it to the MQTT command parameters. Only configure sliders
 for lights whose RV-Control mapping and controller policy permit brightness.
+For telemetry fields that differ from the action parameter, set
+`value_field` to the state key used to position the slider and `unit` to the
+display suffix. The Coach dashboard uses `level`/percent for Living Ceiling,
+Hall, and Bedroom Ceiling. The WLED Patio strip uses `bri` from 0 to 255.
 
 The live and example Coach tabs have **Tank Levels**, **Lights**, **Fans**,
-and **Generator** parent cards. Lights contains three lighting cards:
+and **Generator** parent cards. Lights contains the following groups:
 
 | Group | Lights |
 | --- | --- |
-| Entry | Cargo, Step, Awning |
+| Entry | Cargo, Step, Awning, Patio strip |
 | Main | Living Ceiling, Hall, Dinette, Kitchen, Sofa, Accent |
 | Rear | Bedroom ceiling, Rear Bath, Mid Bath, Vanity |
 

@@ -62,13 +62,17 @@ class DashboardControlTests(unittest.TestCase):
                     "id": "living_ceiling_brightness",
                     "target": "living_ceiling_light",
                     "action": "brightness",
-                    "input": {"type": "slider", "param": "level", "min": 0, "max": 100, "step": 1},
+                    "input": {
+                        "type": "slider", "param": "level", "value_field": "level",
+                        "min": 0, "max": 100, "step": 1, "unit": "%",
+                    },
                 }],
             }}]}
             path.write_text(yaml.safe_dump(dashboard))
             loaded, _ = load_dashboard(path, root)
             action = dashboard_controls(loaded)["coach"]["living_ceiling_brightness"]
             self.assertEqual(action["input"]["param"], "level")
+            self.assertEqual(action["input"]["value_field"], "level")
 
             dashboard["tabs"][0]["root"]["controls"][0]["input"]["step"] = 0
             path.write_text(yaml.safe_dump(dashboard))

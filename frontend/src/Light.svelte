@@ -15,6 +15,11 @@
   $: brightness = valid && on ? (level ?? 100) : 0;
   $: toggleControl = controls.find((control) => control.action === 'toggle');
   $: sliderControls = controls.filter((control) => control.input?.type === 'slider');
+  $: sliderReadings = Object.fromEntries(sliderControls.map((control) => {
+    const reported = control.input.value_field ? value?.[control.input.value_field] : level;
+    return [control.id, typeof reported === 'number' && Number.isFinite(reported)
+      ? reported : control.input.max];
+  }));
   $: menuControls = controls.filter((control) => control.action !== 'toggle' && control.input?.type !== 'slider');
   let menuOpen = false;
   let controlRoot;
@@ -99,9 +104,9 @@
 </div>
 {#each sliderControls as control (control.id)}
   <label class="light-dimmer">
-    <span>{control.label}: {sliderValues[control.id] ?? (valid && level != null ? level : control.input.max)}%</span>
+    <span>{control.label}: {sliderValues[control.id] ?? sliderReadings[control.id]}{control.input.unit || ''}</span>
     <input type="range" min={control.input.min} max={control.input.max} step={control.input.step}
-      value={sliderValues[control.id] ?? (valid && level != null ? level : control.input.max)}
+      value={sliderValues[control.id] ?? sliderReadings[control.id]}
       aria-label={`${label} ${control.label}`}
       disabled={!controlsEnabled || !connected || commandBusy}
       on:input={(event) => setSliderValue(control, event)}

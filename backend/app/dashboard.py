@@ -139,13 +139,29 @@ def validate_node(
                 raise ValueError(f"{control_location}: params must contain only finite scalar values")
             control_input = control.get("input")
             if control_input is not None:
+                required_input_fields = {"type", "param", "min", "max", "step"}
                 if (
                     not isinstance(control_input, dict)
-                    or set(control_input) != {"type", "param", "min", "max", "step"}
+                    or not required_input_fields.issubset(control_input)
+                    or set(control_input) - required_input_fields - {"value_field", "unit"}
                     or control_input.get("type") != "slider"
                     or not isinstance(control_input.get("param"), str)
                     or not IDENTIFIER.fullmatch(control_input["param"])
                     or control_input["param"] in params
+                    or (
+                        "value_field" in control_input
+                        and (
+                            not isinstance(control_input["value_field"], str)
+                            or not IDENTIFIER.fullmatch(control_input["value_field"])
+                        )
+                    )
+                    or (
+                        "unit" in control_input
+                        and (
+                            not isinstance(control_input["unit"], str)
+                            or len(control_input["unit"]) > 16
+                        )
+                    )
                     or not is_finite_number(control_input.get("min"))
                     or not is_finite_number(control_input.get("max"))
                     or not is_finite_number(control_input.get("step"))
