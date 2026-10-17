@@ -696,6 +696,7 @@ async def websocket(socket: WebSocket) -> None:
             "config": {
                 **dashboard, "stream": stream_settings,
                 "command_controls_enabled": commands_enabled,
+                "query_controls_enabled": queries_enabled,
             },
         })
         while True:

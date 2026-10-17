@@ -441,6 +441,7 @@ class CommandWebSocketTests(unittest.TestCase):
             patch.object(main, "watch_dashboard", no_background_task),
             patch.object(main, "flush_updates", no_background_task),
             patch.object(main, "commands_enabled", True),
+            patch.object(main, "queries_enabled", True),
             patch.object(main, "command_client_id", "rv-control-web"),
             patch.object(main, "mqtt_client", broker),
             patch.object(main, "mqtt_connected", True),
@@ -453,7 +454,9 @@ class CommandWebSocketTests(unittest.TestCase):
 
             with TestClient(main.app, base_url=ORIGIN) as client:
                 with client.websocket_connect("/ws") as socket:
-                    self.assertEqual(socket.receive_json()["type"], "config")
+                    config = socket.receive_json()
+                    self.assertEqual(config["type"], "config")
+                    self.assertTrue(config["config"]["query_controls_enabled"])
                     socket.send_json({"type": "subscribe", "tab": "coach"})
                     self.assertEqual(socket.receive_json()["type"], "snapshot")
                     socket.send_json({
