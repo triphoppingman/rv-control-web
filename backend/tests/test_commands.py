@@ -360,6 +360,19 @@ class RefreshStatesTests(unittest.IsolatedAsyncioTestCase):
             patch.object(main, "queries_enabled", True),
             patch.object(main, "command_client_id", "rv-control-web"),
             patch.object(main, "tab_topics", {"coach": topics}),
+            patch.object(main, "dashboard", {"tabs": [{
+                "id": "coach",
+                "root": {
+                    "type": "flow",
+                    "children": [
+                        {"type": "fan", "topic": "rv/coach/entity/kitchen_fan",
+                         "lid_topic": "rv/coach/entity/kitchen_fan_lid"},
+                        {"type": "fan", "topic": "rv/coach/entity/rear_bath_fan"},
+                        {"type": "light", "topic": "rv/coach/entity/patio_light",
+                         "refreshable": False},
+                    ],
+                },
+            }]}),
             patch.object(main, "pending_command_results", {}),
             patch.object(main, "active_command_id", None),
         ):

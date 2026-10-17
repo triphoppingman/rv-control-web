@@ -445,7 +445,9 @@ When the Coach page opens, the dashboard sends a read-only `refresh_states`
 query for the unique Coach entities bound on that page. **Refresh Coach
 status** sends the same query manually. The backend derives entity IDs from
 the active tab's configured Coach topics; the browser cannot provide an
-arbitrary entity list. Results include each entity's observed, partial,
+arbitrary entity list. Bound widgets default to refreshable; set
+`refreshable: false` for a Coach topic that does not represent monitored state
+(such as the WLED Patio strip). Results include each entity's observed, partial,
 timed-out, unsupported, or unavailable status. This query does not execute
 physical controls.
 

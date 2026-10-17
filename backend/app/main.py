@@ -296,13 +296,23 @@ async def refresh_tab_states(viewer: Viewer) -> dict[str, Any]:
     """Ask Coach for fresh state of every entity represented on the active tab."""
     global active_command_id
     tab = viewer.tab
-    topics = tab_topics.get(tab, set()) if tab else set()
-    entities = sorted({
-        topic.removeprefix("rv/coach/entity/")
-        for topic in topics
-        if topic.startswith("rv/coach/entity/")
-        and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", topic.removeprefix("rv/coach/entity/"))
-    })
+    tab_config = next((item for item in dashboard["tabs"] if item["id"] == tab), None)
+    entities: set[str] = set()
+
+    def collect_refreshable_topics(node: dict[str, Any]) -> None:
+        if node.get("refreshable", True):
+            for field in ("topic", "lid_topic"):
+                topic = node.get(field)
+                if isinstance(topic, str) and topic.startswith("rv/coach/entity/"):
+                    entity = topic.removeprefix("rv/coach/entity/")
+                    if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", entity):
+                        entities.add(entity)
+        for child in node.get("children", []):
+            collect_refreshable_topics(child)
+
+    if tab_config is not None:
+        collect_refreshable_topics(tab_config["root"])
+    entities = sorted(entities)
     action_id = "refresh_coach_states"
     if not entities:
         return {

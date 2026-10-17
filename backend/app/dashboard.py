@@ -83,6 +83,10 @@ def validate_node(
     kind = node.get("type")
     if not isinstance(kind, str) or kind not in CONTAINERS | BOUND | {"derived", "map"} | STATIC:
         raise ValueError(f"{location}: unknown type {kind!r}")
+    if "refreshable" in node and (
+        kind not in BOUND or not isinstance(node["refreshable"], bool)
+    ):
+        raise ValueError(f"{location}: refreshable must be a boolean on a bound widget")
     if "low_warning_below" in node and kind != "dial":
         raise ValueError(f"{location}: low_warning_below is only supported for dial widgets")
     if "show_warning" in node:
