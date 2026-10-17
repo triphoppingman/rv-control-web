@@ -6,6 +6,7 @@
   import Light from './Light.svelte';
   import Fan from './Fan.svelte';
   import Generator from './Generator.svelte';
+  import Thermostat from './Thermostat.svelte';
   import Map from './Map.svelte';
 
   // The same component recurses through layout containers and renders leaf widgets.
@@ -53,6 +54,14 @@
       || (value.starting === true && value.stopping === true);
   }
 
+  function invalidThermostat(value) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return true;
+    return (value.mode != null && typeof value.mode !== 'string')
+      || (value.fan_mode != null && typeof value.fan_mode !== 'string')
+      || ['fan_speed', 'setpoint_heat_c', 'setpoint_cool_c', 'ambient_c'].some((field) =>
+        value[field] != null && (typeof value[field] !== 'number' || !Number.isFinite(value[field])));
+  }
+
   function calculateDerived(node, values, now, staleAfter) {
     const readings = node.inputs.map((input) => {
       const record = values[input.topic];
@@ -88,15 +97,21 @@
   $: record = values[node.topic];
   $: derived = node.type === 'derived' ? calculateDerived(node, values, now, staleAfter) : null;
   $: value = node.type === 'derived' ? derived.value : extract(record?.payload, node.payload_path);
-  $: missing = node.type === 'derived' ? derived.missing : value === undefined || value === null
-    || (node.type === 'generator' && typeof value === 'object' && !Array.isArray(value)
-      && ['status', 'run_hours', 'starting', 'stopping'].every((field) => value[field] == null));
+  $: missing = node.type === 'derived' ? derived.missing
+    : node.type === 'thermostat' ? value == null || (
+      typeof value === 'object' && !Array.isArray(value)
+        && ['mode', 'fan_mode', 'fan_speed', 'setpoint_heat_c', 'setpoint_cool_c', 'ambient_c']
+          .every((field) => value[field] == null)
+    ) : value === undefined || value === null
+      || (node.type === 'generator' && typeof value === 'object' && !Array.isArray(value)
+        && ['status', 'run_hours', 'starting', 'stopping'].every((field) => value[field] == null));
   $: lidRecord = node.type === 'fan' && node.lid_topic ? values[node.lid_topic] : null;
   $: lid = extract(lidRecord?.payload, node.lid_payload_path);
   $: lidStale = !!lidRecord && now - lidRecord.ts * 1000 > (node.stale_after_ms ?? staleAfter);
   $: stale = node.type === 'derived' ? derived.stale : !missing && now - record.ts * 1000 > (node.stale_after_ms ?? staleAfter);
   $: invalid = node.type === 'derived' ? derived.invalid : !missing && (
-    node.type === 'generator' ? invalidGenerator(value) : node.type === 'light' ? invalidLight(value) : node.type === 'fan'
+    node.type === 'thermostat' ? invalidThermostat(value)
+      : node.type === 'generator' ? invalidGenerator(value) : node.type === 'light' ? invalidLight(value) : node.type === 'fan'
       ? typeof value !== 'boolean' && (typeof value !== 'object' || Array.isArray(value) || typeof value.on !== 'boolean')
       : node.type === 'tank'
       && (typeof value !== 'number' || !Number.isFinite(value)));
@@ -118,11 +133,17 @@
           {connected} {commandControlsEnabled} {commandBusy} {commandResults} {sendControl} />
       {/each}
     </div>
-  {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline', 'derived', 'tank', 'light', 'fan', 'generator'].includes(node.type)}
+  {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline', 'derived', 'tank', 'light', 'fan', 'generator', 'thermostat'].includes(node.type)}
     <div class="widget {node.type}" class:stale style="--accent:{accent}; --span:{node.span || 12}; --min-width:{node.min_width || 'auto'}">
       <div class="widget-top"><span class="widget-label">{node.label || node.payload_path || node.operation}</span><span class="state" class:offline={missing || stale || invalid}>{state}</span></div>
       {#if node.type === 'generator'}
-        <Generator value={missing || invalid ? null : value} />
+        <Generator value={missing || invalid ? null : value} controls={node.controls || []}
+          stateFresh={!missing && !invalid && !stale} controlsEnabled={commandControlsEnabled}
+          {connected} {commandBusy} {commandResults} {sendControl} />
+      {:else if node.type === 'thermostat'}
+        <Thermostat value={missing || invalid ? null : value} controls={node.controls || []}
+          stateFresh={!missing && !invalid && !stale} controlsEnabled={commandControlsEnabled}
+          {connected} {commandBusy} {commandResults} {sendControl} />
       {:else if node.type === 'fan'}
         <Fan value={missing || invalid ? null : value} showLid={!!node.lid_topic} {lid} {lidStale} />
       {:else if node.type === 'light'}
@@ -152,7 +173,7 @@
         {/if}
         <div class="reading">{missing || invalid ? '--' : format(value, node.decimals)}{#if node.unit}<small>{node.unit}</small>{/if}</div>
       {/if}
-      {#if node.controls?.length && node.type !== 'light'}
+      {#if node.controls?.length && !['light', 'generator', 'thermostat'].includes(node.type)}
         <div class="control-actions" aria-label={`${node.label || 'Entity'} controls`}>
           {#each node.controls as control (control.id)}
             <button type="button" disabled={!commandControlsEnabled || !connected || commandBusy}

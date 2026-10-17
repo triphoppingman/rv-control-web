@@ -519,7 +519,8 @@ A node is a discriminated union on `type` with three families:
 Common fields are `type`, optional `id`, `span`, `min_width`, `visible`,
 `class`, and optional action `controls`. Container types are `grid`, `row`,
 `column`, `stack`, `card`, and `flow`.
-Bound widget types are `gauge`, `dial`, `numeric`, `boolean`, and `sparkline`.
+Bound widget types include `gauge`, `dial`, `numeric`, `boolean`, `sparkline`,
+`light`, `fan`, `generator`, and `thermostat`.
 Derived widget type is `derived`; it reads multiple numeric bindings and does
 not introduce a publish path.
 Map widget type is `map`; it centers on latitude and longitude coordinates from an MQTT

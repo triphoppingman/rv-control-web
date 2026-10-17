@@ -463,15 +463,34 @@ payload_path: state
 It displays `status` (`running` or `stopped`), `run_hours` (already converted
 to hours by the publisher), and boolean `starting` / `stopping` relay activity.
 Relay activity is shown separately from engine status: an active start relay
-does not prove the engine is running. There are no start/stop controls.
+does not prove the engine is running. **Start generator** is offered only when
+fresh telemetry reports `stopped`; **Stop generator** is offered only when it
+reports `running`. Both require browser confirmation, and controls are hidden
+while either relay is active or telemetry is stale or unknown. A completed
+command reports dispatch, not that the engine reached the requested state.
 
 Partial states are supported; missing fields show No data or `--`, not Stopped,
 zero hours, or inactive relays. Unknown string or numeric status values are
 displayed explicitly as **Unknown (value)**. Run hours must be finite and
 nonnegative, relay fields must be booleans when present, and simultaneous start
 and stop activity is invalid. Empty state shows No data; malformed state shows
-Invalid input. Stale telemetry retains and mutes the last readings.
-The fake scenario does not supply the generator entity topic.
+Invalid input. Stale telemetry retains and mutes the last readings. The fake
+scenario does not supply the generator entity topic.
+
+## Climate controls
+
+The Coach Climate card binds Front A/C and Rear A/C to their corresponding
+entity state topics. It displays mapped operating mode, fan mode, ambient
+temperature, and heating/cooling set points in Celsius. Set-point arrows send
+the configured `setpoint_up` or `setpoint_down` action once per click.
+
+The front unit exposes Cool, Heat, Off, Auto fan, High fan, Low fan, and
+set-point controls. The spec has no separate Auto operating-mode action, so
+the Auto button is only for fan mode. The rear unit has no heat action or
+Auto fan action; it exposes Cool/Off, High/Low fan, and set-point controls.
+Controls are disabled while telemetry is missing/stale or another command is
+in progress. The dashboard does not infer that an action succeeded from the
+button press; fresh telemetry reports the resulting state.
 
 ## Segmented tank levels
 

@@ -29,7 +29,7 @@ class DashboardFeatureTests(unittest.TestCase):
                 continue
             dashboard, topics = load_dashboard(path, repository / "assets")
             coach = next(tab for tab in dashboard["tabs"] if tab["id"] == "coach")
-            group = coach["root"]["children"][-1]
+            group = next(item for item in coach["root"]["children"] if item.get("title") == "Generator")
             self.assertEqual(group["title"], "Generator")
             node = group["children"][0]
             self.assertEqual(node["type"], "generator")
@@ -181,7 +181,10 @@ class DashboardFeatureTests(unittest.TestCase):
                 dashboard, topics = load_dashboard(path, repository / "assets")
                 coach = next(tab for tab in dashboard["tabs"] if tab["id"] == "coach")
                 groups = coach["root"]["children"]
-                self.assertEqual([group["title"] for group in groups], ["Tank Levels", "Lights", "Fans", "Generator"])
+                self.assertEqual(
+                    [group["title"] for group in groups],
+                    ["Tank Levels", "Lights", "Fans", "Generator", "Climate"],
+                )
                 self.assertTrue(all(group["type"] == "card" for group in groups))
                 layout = groups[1]["children"][0]
                 self.assertEqual(layout["type"], "grid")
@@ -190,10 +193,13 @@ class DashboardFeatureTests(unittest.TestCase):
                 for card in layout["children"]:
                     self.assertEqual(card["type"], "card")
                     lights = card["children"]
+                    expected_lights = expected[card["title"]]
+                    if filename == "dashboard.yaml" and card["title"] == "Entry":
+                        expected_lights = [*expected_lights, ("Patio strip", "patio")]
                     self.assertEqual(
                         [(node["label"], node["topic"]) for node in lights],
                         [(label, f"rv/coach/entity/{entity}_light")
-                         for label, entity in expected[card["title"]]],
+                         for label, entity in expected_lights],
                     )
                     for node in lights:
                         self.assertEqual(node["type"], "light")

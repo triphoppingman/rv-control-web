@@ -21,6 +21,39 @@ ORIGIN = "http://127.0.0.1:8000"
 
 
 class DashboardControlTests(unittest.TestCase):
+    def test_front_and_rear_climate_controls_match_coach_actions(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        for filename in ("dashboard.yaml", "dashboard.example.yaml"):
+            dashboard, topics = load_dashboard(root / filename, root)
+            controls = dashboard_controls(dashboard)["coach"]
+            self.assertIn("rv/coach/entity/front_ac", topics["coach"])
+            self.assertIn("rv/coach/entity/rear_ac", topics["coach"])
+            self.assertEqual(
+                {action for action in ("cool", "heat", "off", "fan_auto", "fan_high", "fan_low",
+                                       "setpoint_down", "setpoint_up")
+                 if f"front_ac_{action}" in controls},
+                {"cool", "heat", "off", "fan_auto", "fan_high", "fan_low",
+                 "setpoint_down", "setpoint_up"},
+            )
+            self.assertEqual(
+                {action for action in ("cool", "heat", "off", "fan_auto", "fan_high", "fan_low",
+                                       "setpoint_down", "setpoint_up")
+                 if f"rear_ac_{action}" in controls},
+                {"cool", "off", "fan_high", "fan_low", "setpoint_down", "setpoint_up"},
+            )
+
+    def test_generator_controls_require_confirmation_and_target_generator(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        dashboard, _ = load_dashboard(root / "dashboard.yaml", root)
+        controls = dashboard_controls(dashboard)["coach"]
+
+        start = controls["generator_start"]
+        stop = controls["generator_stop"]
+        self.assertEqual((start["target"], start["action"], start["confirm"]),
+                         ("generator", "start", True))
+        self.assertEqual((stop["target"], stop["action"], stop["confirm"]),
+                         ("generator", "stop", True))
+
     def test_actions_are_generic_but_targets_are_bound_to_coach_entities(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

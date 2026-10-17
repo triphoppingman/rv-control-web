@@ -322,6 +322,39 @@ tabs:
               label: Generator status
               topic: rv/coach/entity/generator
               payload_path: state
+              controls:
+                - {id: generator_start, target: generator, action: start, label: Start generator, confirm: true}
+                - {id: generator_stop, target: generator, action: stop, label: Stop generator, confirm: true}
+        - type: card
+          title: Climate
+          children:
+            - type: grid
+              cols: 2
+              children:
+                - type: thermostat
+                  label: Front A/C
+                  topic: rv/coach/entity/front_ac
+                  payload_path: state
+                  controls:
+                    - {id: front_ac_cool, target: front_ac, action: cool, label: Cool}
+                    - {id: front_ac_heat, target: front_ac, action: heat, label: Heat}
+                    - {id: front_ac_off, target: front_ac, action: off, label: Off}
+                    - {id: front_ac_fan_auto, target: front_ac, action: fan_auto, label: Auto}
+                    - {id: front_ac_fan_high, target: front_ac, action: fan_high, label: High}
+                    - {id: front_ac_fan_low, target: front_ac, action: fan_low, label: Low}
+                    - {id: front_ac_setpoint_down, target: front_ac, action: setpoint_down, label: Decrease set point}
+                    - {id: front_ac_setpoint_up, target: front_ac, action: setpoint_up, label: Increase set point}
+                - type: thermostat
+                  label: Rear A/C
+                  topic: rv/coach/entity/rear_ac
+                  payload_path: state
+                  controls:
+                    - {id: rear_ac_cool, target: rear_ac, action: cool, label: Cool}
+                    - {id: rear_ac_off, target: rear_ac, action: off, label: Off}
+                    - {id: rear_ac_fan_high, target: rear_ac, action: fan_high, label: High}
+                    - {id: rear_ac_fan_low, target: rear_ac, action: fan_low, label: Low}
+                    - {id: rear_ac_setpoint_down, target: rear_ac, action: setpoint_down, label: Decrease set point}
+                    - {id: rear_ac_setpoint_up, target: rear_ac, action: setpoint_up, label: Increase set point}
   - id: obd2
     label: OBD2
     root:
