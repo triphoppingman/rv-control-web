@@ -145,7 +145,9 @@
           stateFresh={!missing && !invalid && !stale} controlsEnabled={commandControlsEnabled}
           {connected} {commandBusy} {commandResults} {sendControl} />
       {:else if node.type === 'fan'}
-        <Fan value={missing || invalid ? null : value} showLid={!!node.lid_topic} {lid} {lidStale} />
+        <Fan value={missing || invalid ? null : value} showLid={!!node.lid_topic} {lid} {lidStale}
+          stateFresh={!missing && !invalid && !stale} controls={node.controls || []}
+          controlsEnabled={commandControlsEnabled} {connected} {commandBusy} {commandResults} {sendControl} />
       {:else if node.type === 'light'}
         <Light value={missing || invalid ? null : value} label={node.label || 'Light'}
           controls={node.controls || []} controlsEnabled={commandControlsEnabled}
@@ -173,7 +175,7 @@
         {/if}
         <div class="reading">{missing || invalid ? '--' : format(value, node.decimals)}{#if node.unit}<small>{node.unit}</small>{/if}</div>
       {/if}
-      {#if node.controls?.length && !['light', 'generator', 'thermostat'].includes(node.type)}
+      {#if node.controls?.length && !['light', 'fan', 'generator', 'thermostat'].includes(node.type)}
         <div class="control-actions" aria-label={`${node.label || 'Entity'} controls`}>
           {#each node.controls as control (control.id)}
             <button type="button" disabled={!commandControlsEnabled || !connected || commandBusy}

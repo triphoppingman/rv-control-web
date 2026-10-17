@@ -305,16 +305,27 @@ tabs:
                   payload_path: state
                   lid_topic: rv/coach/entity/kitchen_fan_lid
                   lid_payload_path: state
+                  controls:
+                    - {id: kitchen_fan_start, target: kitchen_fan, action: on, label: Start}
+                    - {id: kitchen_fan_stop, target: kitchen_fan, action: off, label: Stop}
+                    - {id: kitchen_fan_lid_raise, target: kitchen_fan_lid, action: open, label: Raise lid}
+                    - {id: kitchen_fan_lid_lower, target: kitchen_fan_lid, action: close, label: Lower lid}
                 - type: fan
                   label: Mid Bath
                   span: 1
                   topic: rv/coach/entity/mid_bath_fan
                   payload_path: state
+                  controls:
+                    - {id: mid_bath_fan_start, target: mid_bath_fan, action: on, label: Start}
+                    - {id: mid_bath_fan_stop, target: mid_bath_fan, action: off, label: Stop}
                 - type: fan
                   label: Rear Bath
                   span: 1
                   topic: rv/coach/entity/rear_bath_fan
                   payload_path: state
+                  controls:
+                    - {id: rear_bath_fan_start, target: rear_bath_fan, action: on, label: Start}
+                    - {id: rear_bath_fan_stop, target: rear_bath_fan, action: off, label: Stop}
         - type: card
           title: Generator
           children:

@@ -54,6 +54,58 @@ class DashboardControlTests(unittest.TestCase):
         self.assertEqual((stop["target"], stop["action"], stop["confirm"]),
                          ("generator", "stop", True))
 
+    def test_fan_controls_match_coach_actions(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        expected = {
+            "kitchen_fan": {
+                ("kitchen_fan", "on"), ("kitchen_fan", "off"),
+                ("kitchen_fan_lid", "open"), ("kitchen_fan_lid", "close"),
+            },
+            "mid_bath_fan": {("mid_bath_fan", "on"), ("mid_bath_fan", "off")},
+            "rear_bath_fan": {("rear_bath_fan", "on"), ("rear_bath_fan", "off")},
+        }
+        for filename in ("dashboard.yaml", "dashboard.example.yaml"):
+            dashboard, topics = load_dashboard(root / filename, root)
+            controls = dashboard_controls(dashboard)["coach"]
+            for fan, actions in expected.items():
+                with self.subTest(filename=filename, fan=fan):
+                    self.assertIn(f"rv/coach/entity/{fan}", topics["coach"])
+                    actual = {
+                        (control["target"], control["action"])
+                        for control in controls.values()
+                        if control["id"].startswith(f"{fan}_")
+                    }
+                    self.assertEqual(actual, actions)
+
+    def test_fan_controls_can_target_only_its_configured_lid_entity(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "dashboard.yaml"
+            fan = {
+                "type": "fan",
+                "topic": "rv/coach/entity/kitchen_fan",
+                "payload_path": "state",
+                "lid_topic": "rv/coach/entity/kitchen_fan_lid",
+                "lid_payload_path": "state",
+                "controls": [{
+                    "id": "kitchen_fan_lid_raise",
+                    "target": "kitchen_fan_lid",
+                    "action": "open",
+                    "label": "Raise lid",
+                }],
+            }
+            path.write_text(yaml.safe_dump({"tabs": [{"id": "coach", "root": fan}]}))
+            dashboard, _ = load_dashboard(path, root)
+            self.assertEqual(
+                dashboard_controls(dashboard)["coach"]["kitchen_fan_lid_raise"]["target"],
+                "kitchen_fan_lid",
+            )
+
+            fan["controls"][0]["target"] = "rear_bath_fan"
+            path.write_text(yaml.safe_dump({"tabs": [{"id": "coach", "root": fan}]}))
+            with self.assertRaisesRegex(ValueError, "target must match"):
+                load_dashboard(path, root)
+
     def test_actions_are_generic_but_targets_are_bound_to_coach_entities(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

@@ -73,6 +73,15 @@ are streamed while that tab is selected. Tank widgets have no actions.
 The fake scenario does not supply these coach entity topics; use a broker
 with real coach telemetry to exercise the shipped Coach tab.
 
+Coach fan widgets expose Start when fresh telemetry reports the fan stopped
+and Stop when it reports the fan running. These commands use the fan entity's
+configured `on` and `off` actions and are hidden when its telemetry is
+unavailable, invalid, or stale. The kitchen fan also exposes Raise lid and
+Lower lid while fresh lid telemetry reports both relays idle; both controls
+are hidden while a lid relay is active or its telemetry is unavailable,
+invalid, or stale. Lid telemetry reports relay activity and remaining time,
+not the lid's physical position.
+
 OBD bindings use the configured MQTT topic, not the source section name
 (`obd_engine`). The example uses `rv/obd` and only active PID fields; disabled
 exhaust-gas and boost PIDs have no widgets or fake readings. Verify topic names,

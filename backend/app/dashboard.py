@@ -104,6 +104,12 @@ def validate_node(
             for topic in (node.get("topic"),)
             if isinstance(topic, str) and topic.startswith(COACH_ENTITY_PREFIX)
         }
+        lid_topic = node.get("lid_topic")
+        if (
+            kind == "fan" and isinstance(lid_topic, str)
+            and lid_topic.startswith(COACH_ENTITY_PREFIX)
+        ):
+            allowed_targets.add(lid_topic[len(COACH_ENTITY_PREFIX):])
         for index, control in enumerate(controls):
             control_location = f"{location}.controls[{index}]"
             if not isinstance(control, dict) or set(control) - {
