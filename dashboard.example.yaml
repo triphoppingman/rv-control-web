@@ -41,6 +41,21 @@ tabs:
           title: Solar input
           span: 6
           children:
+            - type: dial
+              label: PV voltage
+              topic: rv/renogy
+              payload_path: pv_voltage
+              unit: V
+              min: 0
+              max: 150
+              decimals: 1
+              show_warning: false
+            - type: numeric
+              label: PV current
+              topic: rv/renogy
+              payload_path: pv_current
+              unit: A
+              decimals: 2
             - type: numeric
               label: PV power
               topic: rv/renogy
@@ -248,6 +263,13 @@ tabs:
                   span: 1
                   topic: rv/coach/entity/rear_bath_fan
                   payload_path: state
+        - type: card
+          title: Generator
+          children:
+            - type: generator
+              label: Generator status
+              topic: rv/coach/entity/generator
+              payload_path: state
   - id: obd2
     label: OBD2
     root:

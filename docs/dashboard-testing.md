@@ -45,7 +45,7 @@ The example dashboard has:
 
 | Tab | Topic | Widgets |
 | --- | --- | --- |
-| Power | `rv/renogy` | State-of-charge gauge and trend, PV-to-battery voltage delta, PV power |
+| Power | `rv/renogy` | State-of-charge gauge and trend, PV-to-battery voltage delta, PV voltage (0–150 V dial), PV current, PV power |
 | Shore Power | `rv/hughes` | Line-voltage gauge, current, power trend, error code, energy |
 | Coach | `rv/coach/entity/<entity>` | Fresh water, gray, black, black 2, and LPG tank levels |
 | OBD2 | `rv/obd` | RPM, speed, engine load, coolant and transmission temperatures, intake and ambient air, fuel, barometric pressure, voltage, gear, raw torque converter clutch |
@@ -347,9 +347,8 @@ Missing values show No data; malformed states show Invalid input.
 Stale readings retain their last status with a Stale badge and muted display.
 There are no buttons, sliders, or MQTT commands.
 
-The live and example Coach tabs have three parent cards: **Tank Levels**
-groups the five tanks, **Fans** shows three fans, and **Lights** groups the
-three read-only lighting cards:
+The live and example Coach tabs have **Tank Levels**, **Lights**, **Fans**,
+and **Generator** parent cards. Lights contains three read-only lighting cards:
 
 | Group | Lights |
 | --- | --- |
@@ -393,6 +392,30 @@ Missing or partial lid telemetry shows **No data**, malformed telemetry shows
 **Invalid input**, and old lid telemetry has its own **Stale** badge independent
 of the fan's On/Off freshness. No raise/lower or fan controls are provided.
 The fake scenario does not supply these entity topics.
+
+## Read-only generator
+
+The Coach Generator card uses:
+
+```yaml
+type: generator
+label: Generator status
+topic: rv/coach/entity/generator
+payload_path: state
+```
+
+It displays `status` (`running` or `stopped`), `run_hours` (already converted
+to hours by the publisher), and boolean `starting` / `stopping` relay activity.
+Relay activity is shown separately from engine status: an active start relay
+does not prove the engine is running. There are no start/stop controls.
+
+Partial states are supported; missing fields show No data or `--`, not Stopped,
+zero hours, or inactive relays. Unknown string or numeric status values are
+displayed explicitly as **Unknown (value)**. Run hours must be finite and
+nonnegative, relay fields must be booleans when present, and simultaneous start
+and stop activity is invalid. Empty state shows No data; malformed state shows
+Invalid input. Stale telemetry retains and mutes the last readings.
+The fake scenario does not supply the generator entity topic.
 
 ## Segmented tank levels
 

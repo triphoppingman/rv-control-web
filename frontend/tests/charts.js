@@ -298,6 +298,51 @@ try {
   assert(!fixture.querySelector('button, input, [role="button"]'),
     'Fan and lid widgets are read-only');
 
+  const generator = { ...binding, type: 'generator', label: 'Generator status' };
+  await render(generator, { starting: false, stopping: false, status: 'stopped', run_hours: 148.2 });
+  assert(fixture.querySelector('.generator-status strong').textContent === 'Stopped'
+    && fixture.textContent.includes((148.2).toLocaleString(undefined, {
+      minimumFractionDigits: 1, maximumFractionDigits: 1,
+    })), 'Generator renders captured stopped state and run hours');
+  await reading({ status: 'running', run_hours: 0, starting: false, stopping: false }, 2);
+  assert(fixture.querySelector('.generator-status.running')
+    && fixture.textContent.includes((0).toLocaleString(undefined, {
+      minimumFractionDigits: 1, maximumFractionDigits: 1,
+    })), 'Generator renders running and zero engine hours');
+  await reading({ status: 'stopped', starting: true, stopping: false }, 3);
+  assert(fixture.querySelector('.generator-status strong').textContent === 'Stopped'
+    && fixture.querySelectorAll('dd')[1].textContent === 'Active',
+  'Start relay activity does not imply engine running');
+  await reading({ stopping: true }, 4);
+  assert(fixture.querySelector('.generator-status strong').textContent === 'No data'
+    && fixture.querySelectorAll('dd')[2].textContent === 'Active'
+    && fixture.querySelectorAll('dd')[1].textContent === 'No data',
+  'Partial generator readings do not invent status or relay values');
+  for (const status of [5, 'warming_up']) {
+    await reading({ status }, 5);
+    assert(fixture.querySelector('.generator-status strong').textContent === `Unknown (${status})`,
+      `Unknown generator status ${status} is explicit`);
+  }
+  for (const value of [null, {}, { status: null }]) {
+    await reading(value, 6);
+    assert(fixture.querySelector('.state').textContent === 'No data',
+      'Empty generator state reports no data');
+  }
+  for (const value of [true, [], { status: true }, { status: '' }, { run_hours: -1 },
+    { run_hours: Infinity }, { starting: 1 }, { starting: true, stopping: true }]) {
+    await reading(value, 7);
+    assert(fixture.querySelector('.state').textContent === 'Invalid input',
+      `Generator rejects invalid state ${JSON.stringify(value)}`);
+  }
+  await reading({ status: 'running', run_hours: 148.2 }, 8);
+  widget.$set({ now: 19000 });
+  await tick();
+  assert(fixture.querySelector('.state').textContent === 'Stale'
+    && fixture.querySelector('.generator-status strong').textContent === 'Running',
+  'Generator retains stale readings with explicit freshness');
+  assert(!fixture.querySelector('button, input, [role="button"]'),
+    'Generator has no start/stop controls');
+
   results.textContent = `PASS: ${checks.length} checks\n${checks.join('\n')}`
     + (skipped.length ? `\nSKIPPED: ${skipped.join('; ')}` : '');
 } catch (error) {

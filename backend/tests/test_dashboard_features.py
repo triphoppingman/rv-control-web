@@ -21,6 +21,73 @@ from backend.app.dashboard import load_dashboard
 
 
 class DashboardFeatureTests(unittest.TestCase):
+    def test_generator_configuration_and_samples(self) -> None:
+        repository = Path(__file__).resolve().parents[2]
+        for filename in ("dashboard.example.yaml", "dashboard.yaml"):
+            path = repository / filename
+            if not path.exists():
+                continue
+            dashboard, topics = load_dashboard(path, repository / "assets")
+            coach = next(tab for tab in dashboard["tabs"] if tab["id"] == "coach")
+            group = coach["root"]["children"][-1]
+            self.assertEqual(group["title"], "Generator")
+            node = group["children"][0]
+            self.assertEqual(node["type"], "generator")
+            self.assertEqual(node["payload_path"], "state")
+            self.assertEqual(node["topic"], "rv/coach/entity/generator")
+            self.assertIn(node["topic"], topics["coach"])
+            for state in (
+                {"starting": False, "stopping": False, "status": "stopped", "run_hours": 148.2},
+                {"status": "running", "run_hours": 0},
+                {"starting": True}, {"stopping": True}, {"run_hours": 148.2},
+                {"status": 5}, {"status": "warming_up"}, {"status": None, "starting": False},
+            ):
+                with self.subTest(filename=filename, state=state):
+                    self.assertEqual(validate_samples(
+                        {"tabs": [{"root": node}]}, {node["topic"]: {"state": state}},
+                        {node["topic"]},
+                    ), [])
+            for state in (
+                None, {}, [], True, {"status": ""}, {"status": True},
+                {"run_hours": -1}, {"run_hours": "148.2"}, {"run_hours": float("inf")},
+                {"starting": 1}, {"stopping": "false"}, {"starting": True, "stopping": True},
+            ):
+                with self.subTest(filename=filename, state=state):
+                    self.assertTrue(validate_samples(
+                        {"tabs": [{"root": node}]}, {node["topic"]: {"state": state}},
+                        {node["topic"]},
+                    ))
+
+    def test_solar_input_voltage_and_current(self) -> None:
+        repository = Path(__file__).resolve().parents[2]
+        for filename in ("dashboard.example.yaml", "dashboard.yaml"):
+            path = repository / filename
+            if not path.exists():
+                continue
+            with self.subTest(filename=filename):
+                dashboard, _ = load_dashboard(path, repository / "assets")
+                solar = dashboard["tabs"][0]
+                card = next(node for node in solar["root"]["children"]
+                            if node.get("title") == "Solar input")
+                voltage, current, power = card["children"]
+                self.assertEqual(
+                    (voltage["type"], voltage["payload_path"], voltage["unit"],
+                     voltage["min"], voltage["max"]),
+                    ("dial", "pv_voltage", "V", 0, 150),
+                )
+                self.assertEqual(
+                    (current["type"], current["payload_path"], current["unit"]),
+                    ("numeric", "pv_current", "A"),
+                )
+                self.assertEqual(power["payload_path"], "pv_power")
+                self.assertTrue(all(node["topic"] == "rv/renogy"
+                                    for node in card["children"]))
+                self.assertEqual(validate_samples(
+                    {"tabs": [{"root": card}]},
+                    {"rv/renogy": {"pv_voltage": 13.4, "pv_current": 0.0, "pv_power": 0}},
+                    {"rv/renogy"},
+                ), [])
+
     def test_coach_fans_and_lid_subscription(self) -> None:
         repository = Path(__file__).resolve().parents[2]
         dashboard, topics = load_dashboard(
@@ -114,7 +181,7 @@ class DashboardFeatureTests(unittest.TestCase):
                 dashboard, topics = load_dashboard(path, repository / "assets")
                 coach = next(tab for tab in dashboard["tabs"] if tab["id"] == "coach")
                 groups = coach["root"]["children"]
-                self.assertEqual([group["title"] for group in groups], ["Tank Levels", "Lights", "Fans"])
+                self.assertEqual([group["title"] for group in groups], ["Tank Levels", "Lights", "Fans", "Generator"])
                 self.assertTrue(all(group["type"] == "card" for group in groups))
                 layout = groups[1]["children"][0]
                 self.assertEqual(layout["type"], "grid")

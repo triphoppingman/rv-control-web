@@ -120,6 +120,31 @@ def validate_samples(
                     errors.append(
                         f"{location}: topic {topic!r} payload_path {path!r} must resolve to a finite number"
                     )
+                elif node.get("type") == "generator":
+                    valid = (
+                        isinstance(value, dict)
+                        and any(value.get(field) is not None for field in (
+                            "status", "run_hours", "starting", "stopping"
+                        ))
+                        and (
+                            value.get("status") is None
+                            or (isinstance(value["status"], str) and bool(value["status"].strip()))
+                            or is_finite_number(value["status"])
+                        )
+                        and (
+                            value.get("run_hours") is None
+                            or (is_finite_number(value["run_hours"]) and value["run_hours"] >= 0)
+                        )
+                        and all(value.get(field) is None or isinstance(value[field], bool)
+                                for field in ("starting", "stopping"))
+                        and not (value.get("starting") is True and value.get("stopping") is True)
+                    )
+                    if not valid:
+                        errors.append(
+                            f"{location}: topic {topic!r} payload_path {path!r} must resolve "
+                            "to a generator state with status, nonnegative run_hours, or boolean "
+                            "starting/stopping (not both active)"
+                        )
                 elif node.get("type") == "fan":
                     if topic == node.get("lid_topic") and path == node.get("lid_payload_path"):
                         valid = (
