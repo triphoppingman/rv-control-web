@@ -5,7 +5,6 @@
   export let controlsEnabled = false;
   export let connected = false;
   export let commandBusy = false;
-  export let commandResults = {};
   export let sendControl = () => {};
 
   $: on = typeof value === 'boolean' ? value : value?.on;
@@ -113,12 +112,6 @@
       on:change={() => submitSlider(control)} />
   </label>
 {/each}
-{#each controls as control (control.id)}
-  {#if commandResults[control.id]}
-    <p class="light-command-result" class:failed={commandResults[control.id].status !== 'completed'}
-      role="status">{commandResults[control.id].message}</p>
-  {/if}
-{/each}
 
 <style>
   .light-control { display: flex; align-items: center; gap: 12px; margin-top: 18px; position: relative; }
@@ -136,8 +129,6 @@
   .light-menu { position: absolute; z-index: 10; top: calc(100% + 5px); right: 0; display: grid; min-width: 130px; gap: 4px; padding: 6px; border: 1px solid var(--border-widget); border-radius: 4px; background: var(--bg-card); box-shadow: 0 6px 18px #0003; }
   .light-menu button { text-align: left; }
   .light-menu button:hover, .light-menu-trigger:hover { border-color: var(--accent, #147d73); }
-  .light-command-result { margin: 8px 0 0; color: var(--color-text-muted); font-size: 11px; }
-  .light-command-result.failed { color: var(--color-error); }
   .light-dimmer { display: grid; grid-template-columns: auto minmax(100px, 1fr); align-items: center; gap: 12px; margin-top: 12px; color: var(--color-text-muted); font-size: 12px; }
   .light-dimmer input { width: 100%; accent-color: var(--accent, #147d73); }
   :global(.stale) .light-status { opacity: 0.55; }

@@ -117,8 +117,6 @@ h1 { font-size: clamp(26px, 3vw, 38px); font-weight: 600; }
 .page-actions { display: flex; align-items: center; gap: 14px; }
 .page-actions button { cursor: pointer; border: 1px solid var(--border-widget); border-radius: 4px; padding: 8px 12px; background: var(--bg-card); color: var(--color-text); font: 600 12px 'DM Sans', sans-serif; }
 .page-actions button:hover:not(:disabled) { border-color: var(--accent, #147d73); }
-.refresh-result { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: -14px 0 22px; color: var(--color-text-muted); font-size: 12px; }
-.refresh-result.failed { color: var(--color-error); }
 .grid { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: var(--gap); align-items: start; }
 .grid > * { grid-column: span min(var(--span), var(--cols)); min-width: 0; }
 .row { display: flex; flex-wrap: wrap; gap: var(--gap); }
@@ -158,14 +156,11 @@ h1 { font-size: clamp(26px, 3vw, 38px); font-weight: 600; }
 .control-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
 .control-actions button { cursor: pointer; border: 1px solid var(--border-widget); border-radius: 4px; padding: 7px 10px; background: var(--bg-card); color: var(--color-text); font: 600 12px 'DM Sans', sans-serif; }
 .control-actions button:hover:not(:disabled) { border-color: var(--accent, #147d73); }
-.control-result { flex-basis: 100%; color: var(--color-text-muted); font-size: 11px; }
-.control-result.failed { color: var(--color-error); }
 .text { color: var(--color-text); line-height: 1.6; }
 .text.heading { font: 600 22px 'Space Grotesk', sans-serif; color: var(--color-heading); }
 .text.caption { font-size: 12px; color: var(--color-text-muted); }
 .static-image { display: block; max-width: 100%; }
 .divider { border: 0; border-top: 1px solid var(--border-divider); width: 100%; }
-.error { margin-top: 24px; padding: 14px; border-left: 3px solid var(--border-error); background: var(--bg-error); color: var(--color-error); }
 .loading { color: var(--color-text-muted); }
 .account-actions { display: flex; align-items: center; gap: 14px; font-size: 12px; }
 .account-actions button { cursor: pointer; padding: 7px 12px; border: 1px solid #80b3a1; background: transparent; color: #fff; border-radius: 4px; }

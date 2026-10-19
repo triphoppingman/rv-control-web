@@ -5,7 +5,6 @@
   export let controlsEnabled = false;
   export let connected = false;
   export let commandBusy = false;
-  export let commandResults = {};
   export let sendControl = () => {};
 
   $: mode = value?.mode;
@@ -76,12 +75,6 @@
   </div>
 {/if}
 
-{#each controls as control (control.id)}
-  {#if commandResults[control.id]}
-    <p class="thermostat-command-result" class:failed={commandResults[control.id].status !== 'completed'}
-      role="status">{commandResults[control.id].message}</p>
-  {/if}
-{/each}
 
 <style>
   .thermostat-readings { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-top: 16px; }
@@ -96,6 +89,4 @@
   .thermostat-setpoint { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
   .thermostat-setpoint-controls { display: flex; gap: 6px; margin-left: auto; }
   .thermostat-setpoint-controls button { min-width: 38px; font-size: 18px; }
-  .thermostat-command-result { margin: 8px 0 0; color: var(--color-text-muted); font-size: 11px; }
-  .thermostat-command-result.failed { color: var(--color-error); }
 </style>

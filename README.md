@@ -16,7 +16,22 @@ The example topics must be adapted to the payloads your devices publish.
   (includes an interactive credential-file creator runnable from the image)
 - [Dashboard features and local MQTT testing](docs/dashboard-testing.md):
   complete startup/restart workflow, fake telemetry configuration, sample
-  validation, sparklines, derived readings, and troubleshooting
+  validation, sparklines, derived readings, notifications, and troubleshooting
+- [Shared UI notification pattern](docs/architecture.md#131-shared-notifications-and-feedback):
+  reusable API, lifecycle, accessibility, and guidance for future UI feedback
+
+## UI feedback
+
+Coach refresh and configured action results appear as rounded notifications
+at the bottom-right, not inside widgets. Notifications disappear after five
+seconds or can be dismissed manually; refresh entity details can be expanded.
+Application errors use the same system. Live telemetry remains the source of
+physical-state confirmation.
+
+New frontend feedback should reuse the
+[shared notification API](docs/architecture.md#131-shared-notifications-and-feedback).
+See [notification regression checks](docs/dashboard-testing.md#notifications)
+for the browser-only test workflow.
 
 ## Local development
 

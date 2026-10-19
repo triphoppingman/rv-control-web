@@ -7,6 +7,12 @@ Changes below are unreleased; no release version or Git tag has been assigned.
 
 ### Added
 
+- Shared, theme-aware bottom-right notifications with rounded bubble styling,
+  independent five-second expiry, manual dismissal, accessible status/error
+  announcements, and expandable Coach refresh entity details.
+- Browser-only notification regression checks covering lifetime, dismissal,
+  all control widget result paths, refresh results, disconnects, and
+  authentication errors using mocked HTTP and WebSocket responses.
 - Automotive analog dial widgets with radial major and minor tick subdivisions,
   redline warning zones, tapered needle pointers with center hub caps, and
   calibrated scales for engine speed (`×1000 RPM`), vehicle speed (`MPH`),
@@ -59,6 +65,11 @@ Changes below are unreleased; no release version or Git tag has been assigned.
 
 ### Changed
 
+- Coach refresh, configured action results, and application errors now use
+  shared notifications instead of persistent inline messages. Operation busy
+  gating and live telemetry indicators remain independent of notifications.
+- Frontend architecture, testing instructions, and contributor guidance
+  document the shared notification API and require reuse for future feedback.
 - Authentication is enabled by default and fails startup on missing or invalid
   credentials/origins. Anonymous access now requires explicit
   `auth.enabled: false`, intended only for local tests.

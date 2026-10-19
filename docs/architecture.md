@@ -813,6 +813,58 @@ Light widgets may expose a single-click toggle and a context menu of other
 configured actions. All actions go through the authenticated WebSocket; the
 browser never receives MQTT credentials.
 
+### 13.1 Shared notifications and feedback
+
+Transient operation results and application errors use one notification system:
+
+- [`notifications.js`](../frontend/src/notifications.js) owns the Svelte store,
+  unique IDs, and independent five-second dismissal timers.
+- [`Notifications.svelte`](../frontend/src/Notifications.svelte) renders the
+  store once at application level in
+  [`App.svelte`](../frontend/src/App.svelte), outside the tab tree and login
+  form. Notifications remain visible across tab changes and do not alter
+  dashboard layout.
+- The bottom-right stack uses rounded, bubble-like cards (24px corner radius),
+  existing light/dark theme variables, safe-area offsets, and a
+  viewport-bounded scrollable area. Entity result details are collapsed by
+  default. Each notification also has a manual dismiss button.
+- Informational and successful results use a `status` live region; errors use
+  an `alert` region. Render all message and detail strings as escaped text,
+  never raw HTML.
+
+Use the shared API for new transient feedback:
+
+```js
+import { notify } from './notifications.js';
+
+notify('Operation finished', { title: 'Coach status', kind: 'success' });
+notify('Request failed', { title: 'Coach status', kind: 'error' });
+```
+
+`notify(message, options)` returns the notification ID. Options are `title`
+(default `''`), `kind` (`info`, `success`, or `error`; default `info`), and
+`details` (an array of strings; default `[]`). The renderer currently labels
+details as **Entity results**, so use them for per-entity operation outcomes.
+`dismissNotification(id)` removes one notification and cancels its timer;
+`clearNotifications()` cancels all timers and clears the store. The exported
+`notifications` store is read-only to consumers: use these helpers rather
+than mutating it. Application teardown and dashboard/session clearing remove
+old notifications.
+
+Route Coach refresh results, every widget's configured action results,
+WebSocket errors, interrupted action/refresh outcomes, authentication errors,
+and session/configuration request failures through this API. Do not restore
+inline result messages or pass result maps through the recursive widget tree.
+The notification lifetime is independent of operation state: pending requests
+still disable controls, and the refresh button shows `Refreshing...` until
+completion or disconnect. Keep persistent telemetry, connection state, and
+stale/no-data/invalid indicators in their existing UI locations. A dispatched
+action is not proof of physical state; retain that distinction in messages.
+
+For regression instructions, see
+[Notifications](dashboard-testing.md#notifications). Extend the existing
+browser checks when adding feedback sources or changing lifecycle behavior.
+
 ## 14. Widget Catalog
 
 - **Containers:** `grid`, `row`, `column`, `stack`, `card`

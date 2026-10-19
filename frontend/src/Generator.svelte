@@ -5,7 +5,6 @@
   export let controlsEnabled = false;
   export let connected = false;
   export let commandBusy = false;
-  export let commandResults = {};
   export let sendControl = () => {};
 
   $: status = value?.status;
@@ -34,12 +33,6 @@
     title={!controlsEnabled ? 'Controls are disabled by server configuration' : undefined}
     on:click={() => sendControl(availableControl)}>{availableControl.label}</button>
 {/if}
-{#each controls as control (control.id)}
-  {#if commandResults[control.id]}
-    <p class="generator-command-result" class:failed={commandResults[control.id].status !== 'completed'}
-      role="status">{commandResults[control.id].message}</p>
-  {/if}
-{/each}
 
 <style>
   .generator-status { display: flex; align-items: center; gap: 16px; margin-top: 18px; color: var(--color-text-muted); }
@@ -53,7 +46,5 @@
   .generator-action { margin-top: 16px; cursor: pointer; border: 1px solid var(--border-widget); border-radius: 4px; padding: 8px 14px; background: var(--bg-card); color: var(--color-text); font: 600 13px 'DM Sans', sans-serif; }
   .generator-action:hover { border-color: var(--accent, #147d73); }
   .generator-action:disabled { cursor: wait; opacity: 0.6; }
-  .generator-command-result { margin: 8px 0 0; color: var(--color-text-muted); font-size: 11px; }
-  .generator-command-result.failed { color: var(--color-error); }
   :global(.widget.stale) .generator-status, :global(.widget.stale) dl { opacity: 0.55; }
 </style>

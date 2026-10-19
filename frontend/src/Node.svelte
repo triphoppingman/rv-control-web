@@ -18,7 +18,6 @@
   export let connected = false;
   export let commandControlsEnabled = false;
   export let commandBusy = false;
-  export let commandResults = {};
   export let sendControl = () => {};
 
   const palette = { red: '#c6534b', amber: '#c68529', green: '#147d73', blue: '#3275a4', gray: '#788a86' };
@@ -130,7 +129,7 @@
       {/if}
       {#each node.children || [] as child, index (child.id || index)}
         <svelte:self node={child} {values} {now} {staleAfter} {theme}
-          {connected} {commandControlsEnabled} {commandBusy} {commandResults} {sendControl} />
+          {connected} {commandControlsEnabled} {commandBusy} {sendControl} />
       {/each}
     </div>
   {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline', 'derived', 'tank', 'light', 'fan', 'generator', 'thermostat'].includes(node.type)}
@@ -139,19 +138,19 @@
       {#if node.type === 'generator'}
         <Generator value={missing || invalid ? null : value} controls={node.controls || []}
           stateFresh={!missing && !invalid && !stale} controlsEnabled={commandControlsEnabled}
-          {connected} {commandBusy} {commandResults} {sendControl} />
+          {connected} {commandBusy} {sendControl} />
       {:else if node.type === 'thermostat'}
         <Thermostat value={missing || invalid ? null : value} controls={node.controls || []}
           stateFresh={!missing && !invalid && !stale} controlsEnabled={commandControlsEnabled}
-          {connected} {commandBusy} {commandResults} {sendControl} />
+          {connected} {commandBusy} {sendControl} />
       {:else if node.type === 'fan'}
         <Fan value={missing || invalid ? null : value} showLid={!!node.lid_topic} {lid} {lidStale}
           stateFresh={!missing && !invalid && !stale} controls={node.controls || []}
-          controlsEnabled={commandControlsEnabled} {connected} {commandBusy} {commandResults} {sendControl} />
+          controlsEnabled={commandControlsEnabled} {connected} {commandBusy} {sendControl} />
       {:else if node.type === 'light'}
         <Light value={missing || invalid ? null : value} label={node.label || 'Light'}
           controls={node.controls || []} controlsEnabled={commandControlsEnabled}
-          {connected} {commandBusy} {commandResults} sendControl={sendControl} />
+          {connected} {commandBusy} sendControl={sendControl} />
       {:else if node.type === 'boolean'}
         <div class="boolean-value" class:on={!missing && (node.on_when === undefined ? !!value : value === node.on_when)}>
           <span class="indicator"></span>{missing ? '--' : (node.on_when === undefined ? !!value : value === node.on_when) ? (node.true_label || 'On') : (node.false_label || 'Off')}
@@ -181,10 +180,6 @@
             <button type="button" disabled={!commandControlsEnabled || !connected || commandBusy}
               title={!commandControlsEnabled ? 'Controls are disabled by server configuration' : undefined}
               on:click={() => sendControl(control)}>{control.label}</button>
-            {#if commandResults[control.id]}
-              <span class="control-result" class:failed={commandResults[control.id].status !== 'completed'}
-                role="status">{commandResults[control.id].message}</span>
-            {/if}
           {/each}
         </div>
       {/if}

@@ -1,6 +1,8 @@
 <script>
   import { onMount } from 'svelte';
   import Node from './Node.svelte';
+  import Notifications from './Notifications.svelte';
+  import { notify, clearNotifications } from './notifications.js';
 
   let config;
   let active;
@@ -10,10 +12,7 @@
   let queryControlsEnabled = false;
   let commandBusy = false;
   let refreshBusy = false;
-  let refreshResult = null;
   let pendingControlId = null;
-  let commandResults = {};
-  let error = '';
   let now = Date.now();
   let socket;
   let retry;
@@ -62,9 +61,8 @@
     queryControlsEnabled = false;
     commandBusy = false;
     refreshBusy = false;
-    refreshResult = null;
     pendingControlId = null;
-    commandResults = {};
+    clearNotifications();
   }
 
   async function requestSession() {
@@ -82,7 +80,6 @@
     config = data;
     queryControlsEnabled = data.query_controls_enabled === true;
     configRevision += 1;
-    error = '';
     const requested = new URLSearchParams(location.search).get('tab');
     select(data.tabs.find((tab) => tab.id === requested) || data.tabs[0]);
   }
@@ -103,7 +100,6 @@
 
   async function signIn() {
     busy = true;
-    error = '';
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -118,7 +114,7 @@
       await loadDashboard();
     } catch (cause) {
       password = '';
-      error = cause.message;
+      notify(cause.message, { title: 'Login failed', kind: 'error' });
     } finally {
       busy = false;
     }
@@ -126,7 +122,6 @@
 
   async function signOut() {
     busy = true;
-    error = '';
     try {
       const response = await fetch('/api/auth/logout', { method: 'POST' });
       if (!response.ok) throw new Error(`Logout failed (${response.status})`);
@@ -134,7 +129,7 @@
       viewerName = '';
       clearDashboard();
     } catch (cause) {
-      error = cause.message;
+      notify(cause.message, { title: 'Logout failed', kind: 'error' });
     } finally {
       busy = false;
     }
@@ -158,7 +153,6 @@
     if (!queryControlsEnabled || !connected || commandBusy || refreshBusy
       || socket?.readyState !== WebSocket.OPEN) return;
     refreshBusy = true;
-    refreshResult = { status: 'sending', message: 'Requesting fresh Coach status...' };
     socket.send(JSON.stringify({ type: 'refresh_states' }));
   }
 
@@ -168,10 +162,6 @@
     if (control.confirm && !window.confirm(`Send ${control.action} to ${control.target}?`)) return;
     commandBusy = true;
     pendingControlId = control.id;
-    commandResults = {
-      ...commandResults,
-      [control.id]: { status: 'sending', message: 'Sending command...' },
-    };
     const message = {
       type: 'command', action_id: control.id, confirmed: control.confirm,
     };
@@ -204,15 +194,19 @@
           commandBusy = false;
           pendingControlId = null;
         }
-        commandResults = {
-          ...commandResults,
-          [message.action_id]: { status: message.status, message: message.message },
-        };
+        notify(message.message, {
+          title: `Action: ${message.action_id}`,
+          kind: message.status === 'completed' ? 'success' : 'error',
+        });
         return;
       }
       if (message.type === 'refresh_result') {
         refreshBusy = false;
-        refreshResult = message;
+        notify(message.message, {
+          title: 'Coach status',
+          kind: message.status === 'completed' ? 'success' : 'error',
+          details: (message.data?.entities || []).map((item) => `${item.entity}: ${item.status}`),
+        });
         return;
       }
       // A snapshot replaces current-tab state; later updates merge by topic.
@@ -224,22 +218,23 @@
         for (const record of message.values) values[record.topic] = record;
         // Reassign so Svelte notices changes to the topic map.
         values = { ...values };
-      } else if (message.type === 'error') error = message.message;
+      } else if (message.type === 'error') notify(message.message, { kind: 'error' });
     };
     socket.onclose = () => {
       if (socket !== current) return;
       connected = false;
       values = {};
       if (pendingControlId) {
-        commandResults = {
-          ...commandResults,
-          [pendingControlId]: {
-            status: 'failed',
-            message: 'Connection closed; action outcome is unknown. Check live state before retrying.',
-          },
-        };
+        notify('Connection closed; action outcome is unknown. Check live state before retrying.', {
+          title: `Action: ${pendingControlId}`, kind: 'error',
+        });
         pendingControlId = null;
         commandBusy = false;
+      }
+      if (refreshBusy) {
+        notify('Connection closed before Coach status refresh finished. Reconnect before retrying.', {
+          title: 'Coach status', kind: 'error',
+        });
       }
       refreshBusy = false;
       if (!stopped) {
@@ -247,14 +242,13 @@
         retry = setTimeout(async () => {
           try {
             if (await requestSession()) {
-              error = '';
               connect();
             } else {
               clearDashboard();
-              error = 'Your session ended. Please log in again.';
+              notify('Your session ended. Please log in again.', { kind: 'error' });
             }
           } catch (cause) {
-            error = cause.message;
+            notify(cause.message, { kind: 'error' });
             if (!stopped) retry = setTimeout(connect, delay);
           }
         }, delay);
@@ -276,13 +270,14 @@
     const ticker = setInterval(() => { now = Date.now(); }, 1000);
     requestSession().then((valid) => {
       if (valid && !stopped) return loadDashboard();
-    }).catch((cause) => { error = cause.message; });
+    }).catch((cause) => { notify(cause.message, { kind: 'error' }); });
     return () => {
       stopped = true;
       mediaQuery.removeEventListener?.('change', handleThemeChange);
       clearInterval(ticker);
       clearTimeout(retry);
       socket?.close();
+      clearNotifications();
     };
   });
 </script>
@@ -323,23 +318,12 @@
             <time>{new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
           </div>
         </div>
-        {#if active.id === 'coach' && refreshResult}
-          <p class="refresh-result" class:failed={refreshResult.status !== 'completed'} role="status">
-            {refreshResult.message}
-            {#if refreshResult.data?.entities}
-              {#each refreshResult.data.entities as item (item.entity)}
-                <span>{item.entity}: {item.status}</span>
-              {/each}
-            {/if}
-          </p>
-        {/if}
         <!-- Remount the tree on tab changes so chart history belongs to one tab. -->
         {#key `${configRevision}:${active.id}`}<Node node={active.root} {values} {now}
           staleAfter={config.stream?.stale_after_ms ?? 10000} theme={effectiveTheme} {connected}
           {commandControlsEnabled} commandBusy={commandBusy || refreshBusy}
-          {commandResults} sendControl={sendControl} />{/key}
+          sendControl={sendControl} />{/key}
       {/if}
-      {#if error}<p class="error" role="alert">{error}</p>{/if}
     </main>
   {:else if authReady && !authenticated}
     <main class="login-panel">
@@ -350,10 +334,10 @@
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="1024" bind:value={password} />
         <button type="submit" disabled={busy}>{busy ? 'Logging in...' : 'Log in'}</button>
-        {#if error}<p class="error" role="alert">{error}</p>{/if}
       </form>
     </main>
   {:else}
-    <main><p class="loading">Loading dashboard...</p>{#if error}<p class="error" role="alert">{error}</p>{/if}</main>
+    <main><p class="loading">Loading dashboard...</p></main>
   {/if}
 </div>
+<Notifications />

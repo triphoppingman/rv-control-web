@@ -8,7 +8,6 @@
   export let controlsEnabled = false;
   export let connected = false;
   export let commandBusy = false;
-  export let commandResults = {};
   export let sendControl = () => {};
 
   $: on = typeof value === 'boolean' ? value : value?.on;
@@ -61,12 +60,6 @@
     {/each}
   </div>
 {/if}
-{#each controls as control (control.id)}
-  {#if commandResults[control.id]}
-    <p class="fan-command-result" class:failed={commandResults[control.id].status !== 'completed'}
-      role="status">{commandResults[control.id].message}</p>
-  {/if}
-{/each}
 
 <style>
   .fan-status { display: flex; align-items: center; gap: 16px; margin-top: 18px; color: var(--color-text-muted); }
@@ -78,7 +71,5 @@
   .fan-action:hover { border-color: var(--accent, #147d73); }
   .fan-action:disabled { cursor: wait; opacity: 0.6; }
   .fan-lid-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  .fan-command-result { margin: 8px 0 0; color: var(--color-text-muted); font-size: 11px; }
-  .fan-command-result.failed { color: var(--color-error); }
   .fan-lid.stale, :global(.widget.stale) .fan-status { opacity: 0.55; }
 </style>

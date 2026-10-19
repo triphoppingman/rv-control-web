@@ -19,6 +19,42 @@ see the [README](../README.md); for the application design, see
 - No database, server-side history, layout editor, or physical device simulator
   is introduced by these features.
 
+## Notifications
+
+Refresh results, configured action results, and application errors share a
+bottom-right notification stack rather than appearing inside dashboard widgets
+or forms. Each notification dismisses automatically after five seconds and
+has a dismiss button. Coach refresh entity results are available in the
+notification's expandable details. Action dispatch messages do not confirm
+physical state; continue to use live telemetry for that confirmation.
+Notifications use rounded bubble-like cards, support both display themes,
+and announce status and error messages to assistive technology. Pending actions
+still disable controls, and the refresh button shows `Refreshing...` until
+the operation finishes. Persistent live/stale/no-data/invalid indicators and
+the masthead connection state remain part of the dashboard, not notifications.
+
+Start the frontend with `npm --prefix frontend run dev`, then open
+<http://127.0.0.1:5173/tests/notifications.html>. The page reports PASS or FAIL;
+no backend or MQTT broker is required. It uses mocked HTTP and WebSocket
+responses and never sends Coach commands to a real backend.
+
+The regression checks cover:
+
+- Independent expiry at exactly five seconds, manual dismissal, timer
+  cancellation, clearing, and application teardown.
+- Refresh busy state, collapsed/expandable entity details, and completed or
+  failed refresh notifications without inline dashboard output.
+- Light, fan, generator, thermostat, and generic widget action dispatch,
+  busy gating, and results without inline widget output.
+- Failed command results, escaped server errors, interrupted actions and
+  refreshes, login/logout errors, and clearing old messages on logout.
+
+Also inspect the stack at phone and desktop widths in Day and Night modes:
+cards should remain within the viewport, details should scroll inside the
+bounded stack, and notifications should not shift dashboard content.
+For implementation conventions and API usage, see the
+[shared notification design](architecture.md#131-shared-notifications-and-feedback).
+
 ## Configuration files
 
 | File | Purpose |
