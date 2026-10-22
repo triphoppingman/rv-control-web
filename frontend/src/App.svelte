@@ -319,10 +319,13 @@
           </div>
         </div>
         <!-- Remount the tree on tab changes so chart history belongs to one tab. -->
-        {#key `${configRevision}:${active.id}`}<Node node={active.root} {values} {now}
-          staleAfter={config.stream?.stale_after_ms ?? 10000} theme={effectiveTheme} {connected}
-          {commandControlsEnabled} commandBusy={commandBusy || refreshBusy}
-          sendControl={sendControl} />{/key}
+        {#key `${configRevision}:${active.id}`}
+          <Node node={active.root} {values} {now}
+            staleAfter={config.stream?.stale_after_ms ?? 10000} theme={effectiveTheme}
+            displayTemperatureUnit={config.units?.temperature ?? 'F'} {connected}
+            {commandControlsEnabled} commandBusy={commandBusy || refreshBusy}
+            sendControl={sendControl} />
+        {/key}
       {/if}
     </main>
   {:else if authReady && !authenticated}

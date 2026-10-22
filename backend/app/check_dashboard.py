@@ -21,6 +21,8 @@ NUMERIC_WIDGETS = {"gauge", "dial", "numeric", "sparkline", "tank"}
 def resolve_payload_path(payload: Any, path: str) -> Any:
     """Resolve the same dotted and indexed paths used by the frontend."""
     normalized = re.sub(r"^\$\.?", "", path)
+    if not normalized:
+        return payload
     parts = re.sub(r"\[(\d+)\]", r".\1", normalized).split(".")
     current = payload
     for part in parts:
@@ -62,6 +64,8 @@ def iter_bindings(node: dict[str, Any]):
         for opt_field in ("track_path", "alt_path", "speed_path", "mode_path"):
             if opt_field in node:
                 yield topic, node[opt_field], True
+    elif node.get("type") == "weather":
+        yield node["topic"], "$", False
     elif node.get("type") in BOUND:
         yield node["topic"], node["payload_path"], node["type"] in NUMERIC_WIDGETS
         if node["type"] == "fan" and "lid_topic" in node:
@@ -107,13 +111,18 @@ def validate_samples(
                     derived_valid = False
                     continue
                 payload = samples[topic]
-                if not isinstance(payload, dict):
+                if not isinstance(payload, dict) and node.get("type") != "weather":
                     payload = {"value": payload}
                 value = resolve_payload_path(payload, path)
                 if value is MISSING:
                     derived_valid = False
                     errors.append(
                         f"{location}: topic {topic!r} sample has no value at payload_path {path!r}"
+                    )
+                elif node.get("type") == "weather" and not isinstance(value, dict):
+                    derived_valid = False
+                    errors.append(
+                        f"{location}: topic {topic!r} weather payload must be an object"
                     )
                 elif numeric and not is_finite_number(value):
                     derived_valid = False

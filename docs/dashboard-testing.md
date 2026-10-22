@@ -60,7 +60,7 @@ For implementation conventions and API usage, see the
 | File | Purpose |
 | --- | --- |
 | [config.test.yaml](../config.test.yaml) | Test backend settings; localhost broker on port 1883, example dashboard, 12 Hz streaming, 10-second default staleness |
-| [dashboard.example.yaml](../dashboard.example.yaml) | Shipped Power, Shore Power, Coach, and OBD2 tabs |
+| [dashboard.example.yaml](../dashboard.example.yaml) | Shipped Power, Shore Power, Coach, OBD2, and Weather tabs |
 | [fake-mqtt.example.yaml](../fake-mqtt.example.yaml) | Synthetic payload templates and change patterns |
 | [docker-compose.test.yml](../deploy/docker-compose.test.yml) | Test-only Mosquitto service in Compose project `rv-web-test` |
 | [mosquitto.test.conf](../deploy/mosquitto.test.conf) | Anonymous test broker with persistence disabled |
@@ -86,6 +86,18 @@ The example dashboard has:
 | Shore Power | `rv/hughes` | Line-voltage gauge, current, power trend, error code, energy |
 | Coach | `rv/coach/entity/<entity>` | Fresh water, gray, black, black 2, and LPG tank levels |
 | OBD2 | `rv/obd` | RPM, speed, engine load, coolant and transmission temperatures, intake and ambient air, fuel, barometric pressure, voltage, gear, raw torque converter clutch |
+| Weather | `rv/weather` | Current conditions, seven-day forecast, daylight, and UV index from the Open-Meteo response |
+
+The Weather tab uses the `weather` widget type. Its `provider` defaults to
+`open-meteo`, and its `bindings` map canonical weather fields to dotted paths
+in the full MQTT payload. The example dashboard documents the Open-Meteo paths;
+for another publisher, set `provider: custom` and override the bindings for
+its payload keys. Temperatures default
+to Fahrenheit across the dashboard. Set the
+dashboard-level `units.temperature` to `C` or `F` to choose the display unit;
+temperature widgets with configured `°C` or `°F` source units and the Coach
+thermostat are converted consistently. Weather wind defaults to mph and
+precipitation to inches.
 
 ### Coach tank bindings
 

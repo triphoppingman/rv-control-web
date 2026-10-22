@@ -1,5 +1,7 @@
 app:
   title: RV Control
+units:
+  temperature: F
 tabs:
   - id: power
     label: Power
@@ -487,3 +489,33 @@ tabs:
                   payload_path: tcc
                   decimals: 0
                   min_width: 200px
+  - id: weather
+    label: Weather
+    root:
+      type: weather
+      topic: rv/weather
+      provider: open-meteo
+      bindings:
+        current_temperature: current.temperature_2m
+        apparent_temperature: current.apparent_temperature
+        current_weather_code: current.weather_code
+        humidity: current.relative_humidity_2m
+        wind_speed: current.wind_speed_10m
+        wind_direction: current.wind_direction_10m
+        wind_gusts: current.wind_gusts_10m
+        cloud_cover: current.cloud_cover
+        pressure: current.pressure_msl
+        precipitation: current.precipitation
+        current_time: current.time
+        forecast_dates: daily.time
+        forecast_weather_codes: daily.weather_code
+        forecast_highs: daily.temperature_2m_max
+        forecast_lows: daily.temperature_2m_min
+        precipitation_probability: daily.precipitation_probability_max
+        sunrise: daily.sunrise
+        sunset: daily.sunset
+        uv_index: daily.uv_index_max
+        latitude: requested_location.latitude
+        longitude: requested_location.longitude
+        timezone: timezone
+        fetched_at: fetched_at

@@ -869,13 +869,17 @@ browser checks when adding feedback sources or changing lifecycle behavior.
 
 - **Containers:** `grid`, `row`, `column`, `stack`, `card`
 - **Bound widgets:** `gauge`, `dial`, `numeric`, `boolean`, `sparkline`,
-  `derived`, `tank`
+  `derived`, `tank`, `weather`
 - **Static widgets:** `text`, `image`, `icon`, `divider`, `spacer`
 
 `tank` renders a bottom-up segmented vertical bar from a single numeric
 binding. It supports configurable `min`, `max`, and `segments` (default
 0, 100, and 3), plus standard formatting, thresholds, and stale/no-data
 states. See the testing guide for sensor-increment examples.
+
+`weather` binds to a topic's full JSON object and renders current conditions,
+the seven-day forecast, daylight, and UV index. Configure dashboard-wide
+temperature display with `units.temperature` (`F` by default, or `C`).
 
 ## 15. Responsive and Layout Model
 

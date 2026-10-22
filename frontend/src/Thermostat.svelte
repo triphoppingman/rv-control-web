@@ -1,5 +1,6 @@
 <script>
   export let value = null;
+  export let temperatureUnit = 'F';
   export let controls = [];
   export let stateFresh = false;
   export let controlsEnabled = false;
@@ -19,7 +20,9 @@
   $: enabled = controlsEnabled && connected && stateFresh && !commandBusy;
 
   function temperature(value) {
-    return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(1)} °C` : '--';
+    if (typeof value !== 'number' || !Number.isFinite(value)) return '--';
+    const displayed = temperatureUnit === 'C' ? value : value * 9 / 5 + 32;
+    return `${displayed.toFixed(1)} °${temperatureUnit}`;
   }
 
   function modeSelected(action) {

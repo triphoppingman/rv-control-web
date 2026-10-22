@@ -8,6 +8,7 @@
   import Generator from './Generator.svelte';
   import Thermostat from './Thermostat.svelte';
   import Map from './Map.svelte';
+  import Weather from './Weather.svelte';
 
   // The same component recurses through layout containers and renders leaf widgets.
   export let node;
@@ -15,6 +16,7 @@
   export let now;
   export let staleAfter = 10000;
   export let theme = 'light';
+  export let displayTemperatureUnit = 'F';
   export let connected = false;
   export let commandControlsEnabled = false;
   export let commandBusy = false;
@@ -33,6 +35,16 @@
     return typeof value === 'number' ? value.toLocaleString(undefined, {
       minimumFractionDigits: decimals ?? 0, maximumFractionDigits: decimals ?? 1,
     }) : String(value);
+  }
+
+  function temperatureUnit(unit) {
+    const normalized = String(unit || '').replace('°', '').trim().toUpperCase();
+    return normalized === 'C' ? 'C' : normalized === 'F' ? 'F' : null;
+  }
+
+  function convertTemperature(value, from, to) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || !from || from === to) return value;
+    return from === 'C' ? value * 9 / 5 + 32 : (value - 32) * 5 / 9;
   }
 
   function invalidLight(value) {
@@ -96,6 +108,15 @@
   $: record = values[node.topic];
   $: derived = node.type === 'derived' ? calculateDerived(node, values, now, staleAfter) : null;
   $: value = node.type === 'derived' ? derived.value : extract(record?.payload, node.payload_path);
+  $: targetTemperatureUnit = String(displayTemperatureUnit).trim().toUpperCase() === 'C' ? 'C' : 'F';
+  $: sourceTemperatureUnit = node.type === 'thermostat' ? 'C' : temperatureUnit(node.unit);
+  $: displayValue = convertTemperature(value, sourceTemperatureUnit, targetTemperatureUnit);
+  $: displayMin = convertTemperature(node.min ?? 0, sourceTemperatureUnit, targetTemperatureUnit);
+  $: displayMax = convertTemperature(node.max ?? 100, sourceTemperatureUnit, targetTemperatureUnit);
+  $: displayLowWarning = node.low_warning_below == null ? null
+    : convertTemperature(node.low_warning_below, sourceTemperatureUnit, targetTemperatureUnit);
+  $: displayUnit = sourceTemperatureUnit
+    ? `°${targetTemperatureUnit}` : node.unit;
   $: missing = node.type === 'derived' ? derived.missing
     : node.type === 'thermostat' ? value == null || (
       typeof value === 'object' && !Array.isArray(value)
@@ -128,7 +149,7 @@
         <header class="card-header"><h2>{node.title}</h2>{#if node.subtitle}<p>{node.subtitle}</p>{/if}</header>
       {/if}
       {#each node.children || [] as child, index (child.id || index)}
-        <svelte:self node={child} {values} {now} {staleAfter} {theme}
+        <svelte:self node={child} {values} {now} {staleAfter} {theme} {displayTemperatureUnit}
           {connected} {commandControlsEnabled} {commandBusy} {sendControl} />
       {/each}
     </div>
@@ -142,7 +163,7 @@
       {:else if node.type === 'thermostat'}
         <Thermostat value={missing || invalid ? null : value} controls={node.controls || []}
           stateFresh={!missing && !invalid && !stale} controlsEnabled={commandControlsEnabled}
-          {connected} {commandBusy} {sendControl} />
+          temperatureUnit={targetTemperatureUnit} {connected} {commandBusy} {sendControl} />
       {:else if node.type === 'fan'}
         <Fan value={missing || invalid ? null : value} showLid={!!node.lid_topic} {lid} {lidStale}
           stateFresh={!missing && !invalid && !stale} controls={node.controls || []}
@@ -157,22 +178,22 @@
         </div>
       {:else}
         {#if node.type === 'dial'}
-          <Dial value={missing ? null : Number(value)} min={node.min ?? 0} max={node.max ?? 100}
-            {theme} lowWarningBelow={node.low_warning_below ?? null}
+          <Dial value={missing ? null : Number(displayValue)} min={displayMin} max={displayMax}
+            {theme} lowWarningBelow={displayLowWarning}
             showWarning={node.show_warning ?? true} />
         {:else if node.type === 'gauge'}
-          <Gauge value={missing ? null : Number(value)} min={node.min ?? 0} max={node.max ?? 100}
+          <Gauge value={missing ? null : Number(displayValue)} min={displayMin} max={displayMax}
             color={accent} {theme} />
         {:else if node.type === 'tank'}
           <Tank value={missing || invalid ? null : value} min={node.min ?? 0} max={node.max ?? 100}
             segments={node.segments ?? 3} label={node.label || node.payload_path} />
         {:else if node.type === 'sparkline'}
-          <Sparkline value={missing ? null : Number(value)} min={node.min ?? 0} max={node.max ?? 100} color={accent}
+          <Sparkline value={missing ? null : Number(displayValue)} min={displayMin} max={displayMax} color={accent}
             {theme}
             historyPoints={node.history_points ?? 60} sampleIntervalMs={node.sample_interval_ms ?? 1000}
             timestamp={record?.ts == null ? null : record.ts * 1000} />
         {/if}
-        <div class="reading">{missing || invalid ? '--' : format(value, node.decimals)}{#if node.unit}<small>{node.unit}</small>{/if}</div>
+        <div class="reading">{missing || invalid ? '--' : format(displayValue, node.decimals)}{#if displayUnit}<small>{displayUnit}</small>{/if}</div>
       {/if}
       {#if node.controls?.length && !['light', 'fan', 'generator', 'thermostat'].includes(node.type)}
         <div class="control-actions" aria-label={`${node.label || 'Entity'} controls`}>
@@ -186,6 +207,9 @@
     </div>
   {:else if node.type === 'map'}
     <Map {node} {values} {now} {staleAfter} />
+  {:else if node.type === 'weather'}
+    <Weather record={values[node.topic]} provider={node.provider || 'open-meteo'}
+      bindings={node.bindings || {}} {now} {connected} {displayTemperatureUnit} />
   {:else if node.type === 'text'}
     <div class="text {node.variant || 'body'}" style="--span:{node.span || 12}">{node.content}</div>
   {:else if node.type === 'image'}

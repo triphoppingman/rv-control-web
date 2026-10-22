@@ -21,6 +21,57 @@ from backend.app.dashboard import load_dashboard
 
 
 class DashboardFeatureTests(unittest.TestCase):
+    def test_temperature_unit_defaults_to_fahrenheit_and_can_be_overridden(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "dashboard.yaml"
+            dashboard_data = {"tabs": [{"id": "weather", "root": {"type": "text"}}]}
+
+            path.write_text(yaml.safe_dump(dashboard_data))
+            dashboard, _ = load_dashboard(path, root)
+            self.assertEqual(dashboard["units"]["temperature"], "F")
+
+            dashboard_data["units"] = {"temperature": "C"}
+            path.write_text(yaml.safe_dump(dashboard_data))
+            dashboard, _ = load_dashboard(path, root)
+            self.assertEqual(dashboard["units"]["temperature"], "C")
+
+            dashboard_data["units"]["temperature"] = "K"
+            path.write_text(yaml.safe_dump(dashboard_data))
+            with self.assertRaisesRegex(ValueError, "dashboard.units.temperature must be C or F"):
+                load_dashboard(path, root)
+
+    def test_weather_widget_binds_to_the_full_topic_payload(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "dashboard.yaml"
+            path.write_text(yaml.safe_dump({
+                "tabs": [{"id": "weather", "root": {"type": "weather", "topic": "rv/weather"}}],
+            }))
+            dashboard, topics = load_dashboard(path, root)
+            self.assertEqual(topics, {"weather": {"rv/weather"}})
+            weather = dashboard["tabs"][0]["root"]
+            self.assertEqual(weather["provider"], "open-meteo")
+            self.assertEqual(validate_samples(
+                dashboard, {"rv/weather": {"current": {"temperature_2m": 20.8}}},
+                {"rv/weather"},
+            ), [])
+            self.assertTrue(validate_samples(dashboard, {"rv/weather": 20.8}, {"rv/weather"}))
+
+            weather["provider"] = "custom"
+            weather["bindings"] = {"current_temperature": "conditions.temp"}
+            path.write_text(yaml.safe_dump(dashboard))
+            custom_dashboard, _ = load_dashboard(path, root)
+            self.assertEqual(
+                custom_dashboard["tabs"][0]["root"]["bindings"]["current_temperature"],
+                "conditions.temp",
+            )
+
+            dashboard["tabs"][0]["root"].pop("topic")
+            path.write_text(yaml.safe_dump(dashboard))
+            with self.assertRaisesRegex(ValueError, "topic is required"):
+                load_dashboard(path, root)
+
     def test_generator_configuration_and_samples(self) -> None:
         repository = Path(__file__).resolve().parents[2]
         for filename in ("dashboard.example.yaml", "dashboard.yaml"):
