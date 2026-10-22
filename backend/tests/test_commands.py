@@ -76,6 +76,12 @@ class DashboardControlTests(unittest.TestCase):
                         if control["id"].startswith(f"{fan}_")
                     }
                     self.assertEqual(actual, actions)
+            for action in ("raise", "lower"):
+                with self.subTest(filename=filename, lid_action=action):
+                    self.assertTrue(controls[f"kitchen_fan_lid_{action}"]["confirm"])
+            for fan in expected:
+                for action in ("start", "stop"):
+                    self.assertFalse(controls[f"{fan}_{action}"]["confirm"])
 
     def test_fan_controls_can_target_only_its_configured_lid_entity(self) -> None:
         with TemporaryDirectory() as directory:
@@ -249,6 +255,28 @@ class CommandPublishingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(confirmed["code"], "confirmation_required")
         self.assertEqual(unknown["code"], "unknown_action")
         self.broker.publish.assert_not_awaited()
+
+    async def test_kitchen_lid_controls_publish_only_after_confirmation(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        for filename in ("dashboard.yaml", "dashboard.example.yaml"):
+            dashboard, _ = load_dashboard(root / filename, root)
+            controls = dashboard_controls(dashboard)["coach"]
+            with patch.object(main, "tab_controls", {"coach": controls}):
+                for action, command in (("raise", "open"), ("lower", "close")):
+                    with self.subTest(filename=filename, action=action):
+                        self.broker.publish.reset_mock()
+                        action_id = f"kitchen_fan_lid_{action}"
+                        rejected = await main.submit_control(self.viewer, action_id, False)
+                        self.assertEqual(rejected["code"], "confirmation_required")
+                        self.broker.publish.assert_not_awaited()
+
+                        result = await main.submit_control(self.viewer, action_id, True)
+                        self.assertEqual(result["status"], "completed")
+                        self.broker.publish.assert_awaited_once()
+                        request = json.loads(self.broker.publish.await_args.args[1])
+                        self.assertEqual(request["target"], "kitchen_fan_lid")
+                        self.assertEqual(request["action"], command)
+                        self.assertTrue(request["confirmed"])
 
     async def test_result_timeout_reports_unknown_without_retrying(self) -> None:
         self.broker.publish.side_effect = None

@@ -494,7 +494,7 @@ The RV-Control query API is rate-limited; opening the page and immediately
 refreshing again may return `rate_limited`. Query support is disabled by
 default in the example and test backend configs.
 
-## Read-only fans and kitchen lid
+## Fans and kitchen lid
 
 The Coach **Fans** card contains Kitchen, Mid Bath, and Rear Bath.
 Each `type: fan` widget reads a boolean or an object with boolean `on`
@@ -522,8 +522,13 @@ value, not a browser countdown.
 
 Missing or partial lid telemetry shows **No data**, malformed telemetry shows
 **Invalid input**, and old lid telemetry has its own **Stale** badge independent
-of the fan's On/Off freshness. No raise/lower or fan controls are provided.
-The fake scenario does not supply these entity topics.
+of the fan's On/Off freshness.
+
+When commands are enabled, the configured fan controls provide Start/Stop,
+and the kitchen lid provides Raise lid/Lower lid. Both lid controls must set
+`confirm: true` so the browser asks for confirmation and the MQTT request
+includes `confirmed: true`; otherwise RV-Control rejects the action with
+`confirmation_required`. Fan Start/Stop does not require confirmation.
 
 ## Read-only generator
 

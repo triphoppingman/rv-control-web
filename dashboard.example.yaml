@@ -308,8 +308,8 @@ tabs:
                   controls:
                     - {id: kitchen_fan_start, target: kitchen_fan, action: on, label: Start}
                     - {id: kitchen_fan_stop, target: kitchen_fan, action: off, label: Stop}
-                    - {id: kitchen_fan_lid_raise, target: kitchen_fan_lid, action: open, label: Raise lid}
-                    - {id: kitchen_fan_lid_lower, target: kitchen_fan_lid, action: close, label: Lower lid}
+                    - {id: kitchen_fan_lid_raise, target: kitchen_fan_lid, action: open, label: Raise lid, confirm: true}
+                    - {id: kitchen_fan_lid_lower, target: kitchen_fan_lid, action: close, label: Lower lid, confirm: true}
                 - type: fan
                   label: Mid Bath
                   span: 1
