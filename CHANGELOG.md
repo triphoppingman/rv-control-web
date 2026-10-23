@@ -7,6 +7,7 @@ Changes below are unreleased; no release version or Git tag has been assigned.
 
 ### Added
 
+- Read-only WLED widget with compact brightness and segment color/effect summaries.
 - Shared, theme-aware bottom-right notifications with rounded bubble styling,
   independent five-second expiry, manual dismissal, accessible status/error
   announcements, and expandable Coach refresh entity details.

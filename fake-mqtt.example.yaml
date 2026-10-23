@@ -43,6 +43,9 @@ topics:
         - id: 0
           on: true
           bri: 128
+          fx: 12
+          pal: 4
+          col: [[255, 96, 32], [0, 0, 0], [0, 0, 0]]
   rv/gpsd/TPV:
     interval_s: 1
     payload:

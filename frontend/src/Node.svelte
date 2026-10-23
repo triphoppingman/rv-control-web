@@ -9,6 +9,7 @@
   import Thermostat from './Thermostat.svelte';
   import Map from './Map.svelte';
   import Weather from './Weather.svelte';
+  import Wled from './Wled.svelte';
 
   // The same component recurses through layout containers and renders leaf widgets.
   export let node;
@@ -53,6 +54,27 @@
       || typeof value.on !== 'boolean') return true;
     return value.level != null && (typeof value.level !== 'number'
       || !Number.isFinite(value.level) || value.level < 0 || value.level > 100);
+  }
+
+  function invalidWled(value) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)
+      || typeof value.on !== 'boolean') return true;
+    if (value.bri != null && (!Number.isInteger(value.bri) || value.bri < 0 || value.bri > 255)) return true;
+    if (!Object.prototype.hasOwnProperty.call(value, 'seg')) return false;
+    if (!Array.isArray(value.seg)) return true;
+    return value.seg.some((segment) => {
+      if (typeof segment !== 'object' || segment === null || Array.isArray(segment)
+        || segment.on != null && typeof segment.on !== 'boolean'
+        || segment.bri != null && (!Number.isInteger(segment.bri) || segment.bri < 0 || segment.bri > 255)
+        || ['id', 'fx', 'pal'].some((field) => segment[field] != null
+          && (!Number.isInteger(segment[field]) || segment[field] < 0 || segment[field] > 255))) return true;
+      if (segment.col == null) return false;
+      const colors = Array.isArray(segment.col[0]) ? segment.col : [segment.col];
+      return !Array.isArray(colors) || colors.some((color) =>
+        !Array.isArray(color) || color.length < 3
+        || color.slice(0, 3).some((channel) =>
+          !Number.isInteger(channel) || channel < 0 || channel > 255));
+    });
   }
 
   function invalidGenerator(value) {
@@ -107,7 +129,8 @@
   // Svelte recomputes these states as telemetry or the shared clock changes.
   $: record = values[node.topic];
   $: derived = node.type === 'derived' ? calculateDerived(node, values, now, staleAfter) : null;
-  $: value = node.type === 'derived' ? derived.value : extract(record?.payload, node.payload_path);
+  $: value = node.type === 'derived' ? derived.value
+    : node.type === 'wled' ? record?.payload : extract(record?.payload, node.payload_path);
   $: targetTemperatureUnit = String(displayTemperatureUnit).trim().toUpperCase() === 'C' ? 'C' : 'F';
   $: sourceTemperatureUnit = node.type === 'thermostat' ? 'C' : temperatureUnit(node.unit);
   $: displayValue = convertTemperature(value, sourceTemperatureUnit, targetTemperatureUnit);
@@ -131,7 +154,8 @@
   $: stale = node.type === 'derived' ? derived.stale : !missing && now - record.ts * 1000 > (node.stale_after_ms ?? staleAfter);
   $: invalid = node.type === 'derived' ? derived.invalid : !missing && (
     node.type === 'thermostat' ? invalidThermostat(value)
-      : node.type === 'generator' ? invalidGenerator(value) : node.type === 'light' ? invalidLight(value) : node.type === 'fan'
+      : node.type === 'generator' ? invalidGenerator(value) : node.type === 'light' ? invalidLight(value)
+        : node.type === 'wled' ? invalidWled(value) : node.type === 'fan'
       ? typeof value !== 'boolean' && (typeof value !== 'object' || Array.isArray(value) || typeof value.on !== 'boolean')
       : node.type === 'tank'
       && (typeof value !== 'number' || !Number.isFinite(value)));
@@ -153,7 +177,7 @@
           {connected} {commandControlsEnabled} {commandBusy} {sendControl} />
       {/each}
     </div>
-  {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline', 'derived', 'tank', 'light', 'fan', 'generator', 'thermostat'].includes(node.type)}
+  {:else if ['numeric', 'boolean', 'gauge', 'dial', 'sparkline', 'derived', 'tank', 'light', 'fan', 'generator', 'thermostat', 'wled'].includes(node.type)}
     <div class="widget {node.type}" class:stale style="--accent:{accent}; --span:{node.span || 12}; --min-width:{node.min_width || 'auto'}">
       <div class="widget-top"><span class="widget-label">{node.label || node.payload_path || node.operation}</span><span class="state" class:offline={missing || stale || invalid}>{state}</span></div>
       {#if node.type === 'generator'}
@@ -172,6 +196,8 @@
         <Light value={missing || invalid ? null : value} label={node.label || 'Light'}
           controls={node.controls || []} controlsEnabled={commandControlsEnabled}
           {connected} {commandBusy} sendControl={sendControl} />
+      {:else if node.type === 'wled'}
+        <Wled value={missing || invalid ? null : value} />
       {:else if node.type === 'boolean'}
         <div class="boolean-value" class:on={!missing && (node.on_when === undefined ? !!value : value === node.on_when)}>
           <span class="indicator"></span>{missing ? '--' : (node.on_when === undefined ? !!value : value === node.on_when) ? (node.true_label || 'On') : (node.false_label || 'Off')}

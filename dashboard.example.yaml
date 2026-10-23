@@ -368,6 +368,19 @@ tabs:
                     - {id: rear_ac_fan_low, target: rear_ac, action: fan_low, label: Low}
                     - {id: rear_ac_setpoint_down, target: rear_ac, action: setpoint_down, label: Decrease set point}
                     - {id: rear_ac_setpoint_up, target: rear_ac, action: setpoint_up, label: Increase set point}
+  - id: lighting
+    label: Lighting
+    root:
+      type: grid
+      cols: 12
+      children:
+        - type: card
+          title: Patio WLED
+          span: 6
+          children:
+            - type: wled
+              label: Patio strip
+              topic: rv/wled/patio
   - id: obd2
     label: OBD2
     root:

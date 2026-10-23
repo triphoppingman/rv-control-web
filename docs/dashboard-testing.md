@@ -60,7 +60,7 @@ For implementation conventions and API usage, see the
 | File | Purpose |
 | --- | --- |
 | [config.test.yaml](../config.test.yaml) | Test backend settings; localhost broker on port 1883, example dashboard, 12 Hz streaming, 10-second default staleness |
-| [dashboard.example.yaml](../dashboard.example.yaml) | Shipped Power, Shore Power, Coach, OBD2, and Weather tabs |
+| [dashboard.example.yaml](../dashboard.example.yaml) | Shipped Power, Shore Power, Coach, Lighting, OBD2, and Weather tabs |
 | [fake-mqtt.example.yaml](../fake-mqtt.example.yaml) | Synthetic payload templates and change patterns |
 | [docker-compose.test.yml](../deploy/docker-compose.test.yml) | Test-only Mosquitto service in Compose project `rv-web-test` |
 | [mosquitto.test.conf](../deploy/mosquitto.test.conf) | Anonymous test broker with persistence disabled |
@@ -85,8 +85,14 @@ The example dashboard has:
 | Power | `rv/renogy` | State-of-charge gauge and trend, PV-to-battery voltage delta, PV voltage (0–150 V dial), PV current, PV power |
 | Shore Power | `rv/hughes` | Line-voltage gauge, current, power trend, error code, energy |
 | Coach | `rv/coach/entity/<entity>` | Fresh water, gray, black, black 2, and LPG tank levels |
+| Lighting | `rv/wled/patio` | Read-only WLED power, brightness, segment colors, effects, and palettes |
 | OBD2 | `rv/obd` | RPM, speed, engine load, coolant and transmission temperatures, intake and ambient air, fuel, barometric pressure, voltage, gear, raw torque converter clutch |
 | Weather | `rv/weather` | Current conditions, seven-day forecast, daylight, and UV index from the Open-Meteo response |
+
+The WLED tab binds the complete `/json/state` object without `payload_path`.
+It shows master power, brightness as a percentage, and up to four segment color
+swatches with numeric effect and palette IDs. These IDs are not names; names
+are not included in the state payload. The widget is read-only.
 
 The Weather tab uses the `weather` widget type. Its `provider` defaults to
 `open-meteo`, and its `bindings` map canonical weather fields to dotted paths

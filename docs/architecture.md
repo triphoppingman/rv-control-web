@@ -812,6 +812,8 @@ Static content must never be rendered as raw HTML.
 Light widgets may expose a single-click toggle and a context menu of other
 configured actions. All actions go through the authenticated WebSocket; the
 browser never receives MQTT credentials.
+The read-only `wled` widget consumes the full WLED `/json/state` payload and
+summarizes power, brightness, segment colors, and effect/palette IDs.
 
 ### 13.1 Shared notifications and feedback
 
@@ -869,7 +871,8 @@ browser checks when adding feedback sources or changing lifecycle behavior.
 
 - **Containers:** `grid`, `row`, `column`, `stack`, `card`
 - **Bound widgets:** `gauge`, `dial`, `numeric`, `boolean`, `sparkline`,
-  `derived`, `tank`, `weather`
+  `derived`, `tank`, `light`, `fan`, `generator`, `thermostat`, `weather`,
+  `wled`
 - **Static widgets:** `text`, `image`, `icon`, `divider`, `spacer`
 
 `tank` renders a bottom-up segmented vertical bar from a single numeric
@@ -880,6 +883,12 @@ states. See the testing guide for sensor-increment examples.
 `weather` binds to a topic's full JSON object and renders current conditions,
 the seven-day forecast, daylight, and UV index. Configure dashboard-wide
 temperature display with `units.temperature` (`F` by default, or `C`).
+
+`wled` binds to a topic's full JSON state object; do not set `payload_path`.
+It displays master On/Off, brightness normalized from WLED's 0–255 value,
+and a compact preview of the first four segments with color and numeric
+effect/palette IDs. It is read-only; names for effect and palette IDs are not
+part of `/json/state`.
 
 ## 15. Responsive and Layout Model
 

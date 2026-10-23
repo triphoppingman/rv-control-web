@@ -9,6 +9,7 @@ const results = document.querySelector('#results');
 const checks = [];
 const skipped = [];
 let widget;
+let widgetNode;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -17,10 +18,11 @@ function assert(condition, message) {
 
 async function render(node, value = 120, ts = 1, theme = 'light') {
   widget?.$destroy();
+  widgetNode = node;
   widget = createClassComponent({
     component: Node,
     target: fixture,
-    props: { node, values: { test: { payload: { value }, ts } }, now: ts * 1000, theme },
+    props: { node, values: { test: { payload: node.type === 'wled' ? value : { value }, ts } }, now: ts * 1000, theme },
   });
   await tick();
 }
@@ -30,7 +32,10 @@ function chart() {
 }
 
 async function reading(value, ts) {
-  widget.$set({ values: { test: { payload: { value }, ts } }, now: ts * 1000 });
+  widget.$set({
+    values: { test: { payload: widgetNode?.type === 'wled' ? value : { value }, ts } },
+    now: ts * 1000,
+  });
   await tick();
 }
 
@@ -342,6 +347,39 @@ try {
   'Generator retains stale readings with explicit freshness');
   assert(!fixture.querySelector('button, input, [role="button"]'),
     'Generator has no start/stop controls');
+
+  await render({ type: 'wled', topic: 'test', label: 'Patio' }, {
+    on: true, bri: 128, seg: [
+      { id: 0, on: true, fx: 12, pal: 4, col: [[255, 96, 32]] },
+      { id: 1, on: false, fx: 0, pal: 1 },
+      { id: 2, on: true, fx: 2, pal: 3 },
+      { id: 3, on: true, fx: 3, pal: 4 },
+      { id: 4, on: true, fx: 4, pal: 5 },
+    ],
+  });
+  assert(fixture.querySelector('.wled-status').textContent.includes('On')
+    && fixture.querySelector('.wled-brightness-label strong').textContent === '50%',
+  'WLED displays power and normalized brightness');
+  assert(fixture.querySelector('.wled-segment-summary').textContent.includes('4 active')
+    && fixture.querySelectorAll('.wled-segments li').length === 5
+    && fixture.querySelector('.wled-more').textContent === '+1 more',
+  'WLED summarizes segments and caps the compact preview');
+  assert(fixture.querySelector('.wled-color').getAttribute('aria-label') === 'Color rgb(255, 96, 32)'
+    && fixture.textContent.includes('FX 12') && fixture.textContent.includes('Pal 4'),
+  'WLED shows segment color, effect, and palette IDs');
+  assert(!fixture.querySelector('button, input, [role="button"]'),
+    'WLED widget is read-only');
+  await reading({ on: false, bri: 0, seg: [] }, 2);
+  assert(fixture.querySelector('.wled-status').textContent.includes('Off')
+    && fixture.querySelector('.wled-brightness-label strong').textContent === '0%'
+    && fixture.querySelector('.wled-segment-summary').textContent.includes('0 segments'),
+  'WLED renders off and empty-segment states');
+  await reading({ on: 'false', bri: 0 }, 3);
+  assert(fixture.querySelector('.state').textContent === 'Invalid input',
+    'WLED rejects malformed power state');
+  await reading(null, 4);
+  assert(fixture.querySelector('.state').textContent === 'No data',
+    'WLED distinguishes missing telemetry from Off');
 
   results.textContent = `PASS: ${checks.length} checks\n${checks.join('\n')}`
     + (skipped.length ? `\nSKIPPED: ${skipped.join('; ')}` : '');

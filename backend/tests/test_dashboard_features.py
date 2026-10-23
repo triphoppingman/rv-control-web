@@ -72,6 +72,58 @@ class DashboardFeatureTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "topic is required"):
                 load_dashboard(path, root)
 
+    def test_wled_widget_binds_and_validates_full_state_payload(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "dashboard.yaml"
+            path.write_text(yaml.safe_dump({
+                "tabs": [{"id": "lighting", "root": {"type": "wled", "topic": "rv/wled/patio"}}],
+            }))
+            dashboard, topics = load_dashboard(path, root)
+            self.assertEqual(topics, {"lighting": {"rv/wled/patio"}})
+            state = {
+                "on": True, "bri": 128,
+                "seg": [{"id": 0, "on": True, "fx": 12, "pal": 4, "col": [[255, 96, 32]]}],
+            }
+            self.assertEqual(validate_samples(
+                dashboard, {"rv/wled/patio": state}, {"rv/wled/patio"},
+            ), [])
+            for invalid in (
+                None, [], {"on": 1}, {"on": True, "bri": 256},
+                {"on": True, "seg": {}},
+                {"on": True, "seg": [{"fx": -1}]},
+                {"on": True, "seg": [{"col": [[256, 0, 0]]}]},
+            ):
+                with self.subTest(invalid=invalid):
+                    self.assertTrue(validate_samples(
+                        dashboard, {"rv/wled/patio": invalid}, {"rv/wled/patio"},
+                    ))
+            self.assertTrue(validate_samples(
+                dashboard, {"rv/wled/patio": {"on": True}}, {"rv/wled/patio"},
+            ) == [])
+            dashboard["tabs"][0]["root"]["payload_path"] = "state"
+            path.write_text(yaml.safe_dump(dashboard))
+            with self.assertRaisesRegex(ValueError, "WLED widgets consume the full payload"):
+                load_dashboard(path, root)
+
+        repository = Path(__file__).resolve().parents[2]
+        example, topics = load_dashboard(
+            repository / "dashboard.example.yaml", repository / "assets"
+        )
+        lighting = next(tab for tab in example["tabs"] if tab["id"] == "lighting")
+        widget = lighting["root"]["children"][0]["children"][0]
+        self.assertEqual(widget["type"], "wled")
+        self.assertEqual(topics["lighting"], {"rv/wled/patio"})
+        self.assertEqual(validate_samples(
+            {"tabs": [lighting]},
+            {"rv/wled/patio": {
+                "on": True, "bri": 128,
+                "seg": [{"id": 0, "on": True, "fx": 12, "pal": 4,
+                         "col": [[255, 96, 32], [0, 0, 0], [0, 0, 0]]}],
+            }},
+            {"rv/wled/patio"},
+        ), [])
+
     def test_generator_configuration_and_samples(self) -> None:
         repository = Path(__file__).resolve().parents[2]
         for filename in ("dashboard.example.yaml", "dashboard.yaml"):

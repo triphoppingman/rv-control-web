@@ -64,7 +64,7 @@ def iter_bindings(node: dict[str, Any]):
         for opt_field in ("track_path", "alt_path", "speed_path", "mode_path"):
             if opt_field in node:
                 yield topic, node[opt_field], True
-    elif node.get("type") == "weather":
+    elif node.get("type") in {"weather", "wled"}:
         yield node["topic"], "$", False
     elif node.get("type") in BOUND:
         yield node["topic"], node["payload_path"], node["type"] in NUMERIC_WIDGETS
@@ -111,7 +111,7 @@ def validate_samples(
                     derived_valid = False
                     continue
                 payload = samples[topic]
-                if not isinstance(payload, dict) and node.get("type") != "weather":
+                if not isinstance(payload, dict) and node.get("type") not in {"weather", "wled"}:
                     payload = {"value": payload}
                 value = resolve_payload_path(payload, path)
                 if value is MISSING:
@@ -124,6 +124,67 @@ def validate_samples(
                     errors.append(
                         f"{location}: topic {topic!r} weather payload must be an object"
                     )
+                elif node.get("type") == "wled":
+                    segments = value.get("seg", []) if isinstance(value, dict) else None
+                    valid = (
+                        isinstance(value, dict)
+                        and isinstance(value.get("on"), bool)
+                        and (
+                            value.get("bri") is None
+                            or (
+                                isinstance(value["bri"], int) and not isinstance(value["bri"], bool)
+                                and 0 <= value["bri"] <= 255
+                            )
+                        )
+                        and isinstance(segments, list)
+                        and all(
+                            isinstance(segment, dict)
+                            and (
+                                segment.get("on") is None
+                                or isinstance(segment["on"], bool)
+                            )
+                            and (
+                                segment.get("bri") is None
+                                or (
+                                    isinstance(segment["bri"], int)
+                                    and not isinstance(segment["bri"], bool)
+                                    and 0 <= segment["bri"] <= 255
+                                )
+                            )
+                            and all(
+                                segment.get(field) is None
+                                or (
+                                    isinstance(segment[field], int)
+                                    and not isinstance(segment[field], bool)
+                                    and 0 <= segment[field] <= 255
+                                )
+                                for field in ("id", "fx", "pal")
+                            )
+                            and (
+                                segment.get("col") is None
+                                or isinstance(segment.get("col"), list)
+                                and all(
+                                    isinstance(color, list) and len(color) >= 3
+                                    and all(
+                                        isinstance(channel, int) and not isinstance(channel, bool)
+                                        and 0 <= channel <= 255
+                                        for channel in color[:3]
+                                    )
+                                    for color in (
+                                        segment["col"]
+                                        if segment["col"] and isinstance(segment["col"][0], list)
+                                        else [segment["col"]]
+                                    )
+                                )
+                            )
+                            for segment in segments
+                        )
+                    )
+                    if not valid:
+                        errors.append(
+                            f"{location}: topic {topic!r} WLED payload must have boolean on, "
+                            "optional brightness from 0 to 255, and valid segment data"
+                        )
                 elif numeric and not is_finite_number(value):
                     derived_valid = False
                     errors.append(

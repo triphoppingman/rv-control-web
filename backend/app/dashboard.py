@@ -28,7 +28,7 @@ BOUND = {
 }
 DERIVED_OPERATIONS = {"sum", "difference", "product", "ratio", "average"}
 STATIC = {"text", "image", "icon", "divider", "spacer"}
-SPECIALIZED = {"weather"}
+SPECIALIZED = {"weather", "wled"}
 WEATHER_BINDINGS = {
     "current_temperature", "apparent_temperature", "current_weather_code", "humidity",
     "wind_speed", "wind_direction", "wind_gusts", "cloud_cover", "pressure",
@@ -284,22 +284,25 @@ def validate_node(
         topic = node.get("topic")
         if not isinstance(topic, str) or not topic.strip():
             raise ValueError(f"{location}: topic is required")
-        if "payload_path" in node:
-            raise ValueError(f"{location}: weather widgets consume the full payload")
-        provider = node.setdefault("provider", "open-meteo")
-        if not isinstance(provider, str) or provider not in {"open-meteo", "custom"}:
-            raise ValueError(f"{location}: provider must be open-meteo or custom")
-        bindings = node.setdefault("bindings", {})
-        if not isinstance(bindings, dict):
-            raise ValueError(f"{location}: bindings must be a mapping")
-        unknown_bindings = set(bindings) - WEATHER_BINDINGS
-        if unknown_bindings:
-            raise ValueError(
-                f"{location}: unknown weather bindings: {', '.join(sorted(unknown_bindings))}"
-            )
-        for field, path in bindings.items():
-            if not isinstance(path, str) or not path.strip():
-                raise ValueError(f"{location}: binding {field} must be a non-empty payload path")
+        if kind == "weather":
+            if "payload_path" in node:
+                raise ValueError(f"{location}: weather widgets consume the full payload")
+            provider = node.setdefault("provider", "open-meteo")
+            if not isinstance(provider, str) or provider not in {"open-meteo", "custom"}:
+                raise ValueError(f"{location}: provider must be open-meteo or custom")
+            bindings = node.setdefault("bindings", {})
+            if not isinstance(bindings, dict):
+                raise ValueError(f"{location}: bindings must be a mapping")
+            unknown_bindings = set(bindings) - WEATHER_BINDINGS
+            if unknown_bindings:
+                raise ValueError(
+                    f"{location}: unknown weather bindings: {', '.join(sorted(unknown_bindings))}"
+                )
+            for field, path in bindings.items():
+                if not isinstance(path, str) or not path.strip():
+                    raise ValueError(f"{location}: binding {field} must be a non-empty payload path")
+        elif "payload_path" in node:
+            raise ValueError(f"{location}: WLED widgets consume the full payload")
         topics.add(topic)
     elif kind == "map":
         topic = node.get("topic")
