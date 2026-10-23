@@ -197,7 +197,10 @@
           controls={node.controls || []} controlsEnabled={commandControlsEnabled}
           {connected} {commandBusy} sendControl={sendControl} />
       {:else if node.type === 'wled'}
-        <Wled value={missing || invalid ? null : value} />
+        <Wled value={missing || invalid ? null : value} label={node.label || 'WLED'}
+          controls={node.controls || []} controlsEnabled={commandControlsEnabled}
+          stateFresh={!missing && !invalid && !stale}
+          {connected} {commandBusy} {sendControl} />
       {:else if node.type === 'boolean'}
         <div class="boolean-value" class:on={!missing && (node.on_when === undefined ? !!value : value === node.on_when)}>
           <span class="indicator"></span>{missing ? '--' : (node.on_when === undefined ? !!value : value === node.on_when) ? (node.true_label || 'On') : (node.false_label || 'Off')}
@@ -221,7 +224,7 @@
         {/if}
         <div class="reading">{missing || invalid ? '--' : format(displayValue, node.decimals)}{#if displayUnit}<small>{displayUnit}</small>{/if}</div>
       {/if}
-      {#if node.controls?.length && !['light', 'fan', 'generator', 'thermostat'].includes(node.type)}
+      {#if node.controls?.length && !['light', 'fan', 'generator', 'thermostat', 'wled'].includes(node.type)}
         <div class="control-actions" aria-label={`${node.label || 'Entity'} controls`}>
           {#each node.controls as control (control.id)}
             <button type="button" disabled={!commandControlsEnabled || !connected || commandBusy}

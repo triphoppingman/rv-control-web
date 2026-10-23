@@ -19,6 +19,8 @@ The example topics must be adapted to the payloads your devices publish.
   validation, sparklines, derived readings, notifications, and troubleshooting
 - [Shared UI notification pattern](docs/architecture.md#131-shared-notifications-and-feedback):
   reusable API, lifecycle, accessibility, and guidance for future UI feedback
+- [WLED controls](docs/dashboard-testing.md#wled-controls): Coach entity binding,
+  power, brightness, RGB color, effects, palettes, transitions, and saved presets
 
 ## UI feedback
 

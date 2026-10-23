@@ -381,6 +381,61 @@ tabs:
             - type: wled
               label: Patio strip
               topic: rv/wled/patio
+              entity: patio_light
+              controls:
+                - {id: wled_patio_toggle, target: patio_light, action: toggle, label: Toggle}
+                - {id: wled_patio_on, target: patio_light, action: on, label: Turn on}
+                - {id: wled_patio_off, target: patio_light, action: off, label: Turn off}
+                - id: wled_patio_brightness
+                  target: patio_light
+                  action: brightness
+                  label: Brightness
+                  input: {type: slider, param: bri, value_field: bri, min: 0, max: 255, step: 1}
+                - id: wled_patio_color
+                  target: patio_light
+                  action: color
+                  label: Color
+                  input:
+                    type: form
+                    fields:
+                      - {param: segment, label: Segment ID, min: 0, max: 255, step: 1}
+                      - {param: red, label: Red, min: 0, max: 255, step: 1}
+                      - {param: green, label: Green, min: 0, max: 255, step: 1}
+                      - {param: blue, label: Blue, min: 0, max: 255, step: 1}
+                - id: wled_patio_effect
+                  target: patio_light
+                  action: effect
+                  label: Effect
+                  input:
+                    type: form
+                    fields:
+                      - {param: segment, label: Segment ID, min: 0, max: 255, step: 1}
+                      - {param: effect_id, label: Effect ID, min: 0, max: 255, step: 1}
+                - id: wled_patio_palette
+                  target: patio_light
+                  action: palette
+                  label: Palette
+                  input:
+                    type: form
+                    fields:
+                      - {param: segment, label: Segment ID, min: 0, max: 255, step: 1}
+                      - {param: palette_id, label: Palette ID, min: 0, max: 255, step: 1}
+                - id: wled_patio_transition
+                  target: patio_light
+                  action: transition
+                  label: Transition
+                  input:
+                    type: form
+                    fields:
+                      - {param: duration, label: Duration (100 ms), min: 0, max: 65535, step: 1}
+                - id: wled_patio_preset
+                  target: patio_light
+                  action: preset
+                  label: Preset
+                  input:
+                    type: form
+                    fields:
+                      - {param: preset_id, label: Preset ID, min: 1, max: 250, step: 1}
   - id: obd2
     label: OBD2
     root:

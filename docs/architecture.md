@@ -535,6 +535,8 @@ Validation rules:
   display labels, optional JSON-scalar parameters, and an optional confirmation
   flag. These are the only actions the browser can request; the backend never
   accepts a topic or payload from the browser.
+  WLED widgets instead bind a configured `entity` identifier; every control
+  target must match that entity, independently of the raw telemetry `topic`.
 - Bound widgets require a non-empty `topic` and `payload_path`.
 - Map widgets require a non-empty `topic`, validate optional payload paths (`lat_path`,
   `lon_path`, `track_path`, `alt_path`, `speed_path`, `mode_path`), and validate `zoom`
@@ -661,6 +663,12 @@ It builds the versioned request envelope and fixed parameters from the validated
 dashboard; browser messages cannot override target, action, parameters, or MQTT
 topic. Control actions are accepted only when `mqtt.commands_enabled` is true
 and authentication is enabled.
+
+Input controls may supply `value`: a scalar for a slider, or an object for a
+WLED form. Form objects must contain exactly the configured numeric field
+parameters, each within its configured range and step. They cannot override
+fixed `params`, targets, actions, or topics. All form parameters are sent in
+one semantic action, not a sequence of per-field writes.
 
 ### 10.2 Server to client
 
@@ -812,8 +820,12 @@ Static content must never be rendered as raw HTML.
 Light widgets may expose a single-click toggle and a context menu of other
 configured actions. All actions go through the authenticated WebSocket; the
 browser never receives MQTT credentials.
-The read-only `wled` widget consumes the full WLED `/json/state` payload and
-summarizes power, brightness, segment colors, and effect/palette IDs.
+The `wled` widget consumes the full WLED `/json/state` payload and summarizes
+power, brightness, segment colors, and effect/palette IDs. Optional configured
+Coach controls provide power actions, native-brightness sliders, and explicit
+Apply forms for color, effect, palette, transition, and preset actions through
+the same command flow and shared notifications. Controls require fresh valid
+telemetry, an active connection, enabled commands, and no pending operation.
 
 ### 13.1 Shared notifications and feedback
 
@@ -887,8 +899,17 @@ temperature display with `units.temperature` (`F` by default, or `C`).
 `wled` binds to a topic's full JSON state object; do not set `payload_path`.
 It displays master On/Off, brightness normalized from WLED's 0–255 value,
 and a compact preview of the first four segments with color and numeric
-effect/palette IDs. It is read-only; names for effect and palette IDs are not
-part of `/json/state`.
+effect/palette IDs. Without `controls` it remains read-only. To enable Coach
+actions, set `entity` to the installation's Coach entity identifier and configure
+matching control targets. Brightness uses the integer `bri` parameter (0–255),
+not the RV-C percentage parameter. Multi-parameter actions use `input.type:
+form` with 1–8 fields (`param`, `label`, `min`, `max`, `step`); parameters must
+be unique and cannot collide with fixed action parameters. Color/effect/palette
+forms explicitly address a segment, transition uses 100 ms units, and preset
+applies an existing saved preset. Requested form values are not telemetry.
+Names for effect and palette IDs are not part of `/json/state`; the UI uses
+numeric IDs and does not contact the controller for catalogs. Commands never
+optimistically update telemetry.
 
 ## 15. Responsive and Layout Model
 

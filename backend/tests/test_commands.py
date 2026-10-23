@@ -21,6 +21,67 @@ ORIGIN = "http://127.0.0.1:8000"
 
 
 class DashboardControlTests(unittest.TestCase):
+    def test_wled_form_configuration_rejects_invalid_fields(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "dashboard.yaml"
+            field = {"param": "preset_id", "label": "Preset ID", "min": 1, "max": 250, "step": 1}
+            control = {
+                "id": "preset", "target": "strip", "action": "preset",
+                "input": {"type": "form", "fields": [field]},
+            }
+            data = {"tabs": [{"id": "lighting", "root": {
+                "type": "wled", "entity": "strip", "topic": "rv/wled/strip", "controls": [control],
+            }}]}
+            path.write_text(yaml.safe_dump(data))
+            load_dashboard(path, root)
+            for fields in ([], [field, field], [{**field, "step": 0}],
+                           [{**field, "max": float("inf")}], [{**field, "param": "bad/name"}],
+                           [{**field, "label": ""}], [{**field, "extra": True}]):
+                control["input"]["fields"] = fields
+                path.write_text(yaml.safe_dump(data))
+                with self.subTest(fields=fields), self.assertRaisesRegex(ValueError, "form"):
+                    load_dashboard(path, root)
+            control["input"]["fields"] = [field]
+            control["params"] = {"preset_id": 1}
+            path.write_text(yaml.safe_dump(data))
+            with self.assertRaisesRegex(ValueError, "unique params"):
+                load_dashboard(path, root)
+
+    def test_wled_controls_bind_to_an_explicit_entity_not_the_raw_topic(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "dashboard.yaml"
+            widget = {
+                "type": "wled", "topic": "rv/wled/another-strip", "entity": "another_light",
+                "controls": [{
+                    "id": "strip_on", "target": "another_light", "action": "on",
+                }],
+            }
+            data = {"tabs": [{"id": "lighting", "root": widget}]}
+            path.write_text(yaml.safe_dump(data))
+            loaded, topics = load_dashboard(path, root)
+            self.assertEqual(topics["lighting"], {"rv/wled/another-strip"})
+            self.assertEqual(
+                dashboard_controls(loaded)["lighting"]["strip_on"]["target"], "another_light",
+            )
+            widget["controls"][0]["target"] = "other_light"
+            path.write_text(yaml.safe_dump(data))
+            with self.assertRaisesRegex(ValueError, "target must match"):
+                load_dashboard(path, root)
+            del widget["entity"]
+            path.write_text(yaml.safe_dump(data))
+            with self.assertRaisesRegex(ValueError, "require an entity binding"):
+                load_dashboard(path, root)
+            del widget["controls"]
+            path.write_text(yaml.safe_dump(data))
+            load_dashboard(path, root)
+            for entity in ("", "bad/entity", 123, None):
+                widget["entity"] = entity
+                path.write_text(yaml.safe_dump(data))
+                with self.subTest(entity=entity), self.assertRaisesRegex(ValueError, "entity must"):
+                    load_dashboard(path, root)
+
     def test_front_and_rear_climate_controls_match_coach_actions(self) -> None:
         root = Path(__file__).resolve().parents[2]
         for filename in ("dashboard.yaml", "dashboard.example.yaml"):
@@ -298,6 +359,68 @@ class CommandPublishingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "completed")
         request = json.loads(self.broker.publish.await_args.args[1])
         self.assertEqual(request["params"], {"level": 37})
+
+    async def test_wled_actions_publish_to_the_configured_entity_with_native_brightness(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        dashboard, _ = load_dashboard(root / "dashboard.example.yaml", root)
+        controls = dashboard_controls(dashboard)["lighting"]
+        with patch.object(main, "tab_controls", {"coach": controls}):
+            for action in ("toggle", "on", "off", "brightness"):
+                for value in ((0, 128, 255) if action == "brightness" else (None,)):
+                    with self.subTest(action=action, value=value):
+                        result = await main.submit_control(
+                            self.viewer, f"wled_patio_{action}", False, value,
+                        )
+                        self.assertEqual(result["status"], "completed")
+                        request = json.loads(self.broker.publish.await_args.args[1])
+                        self.assertEqual(request["target"], "patio_light")
+                        self.assertEqual(request["action"], action)
+                        self.assertEqual(request["params"], {} if value is None else {"bri": value})
+            self.broker.publish.reset_mock()
+            for value in (-1, 256, 1.5, True, None):
+                result = await main.submit_control(
+                    self.viewer, "wled_patio_brightness", False, value,
+                )
+                self.assertEqual(result["code"], "invalid_params")
+            self.broker.publish.assert_not_awaited()
+
+    async def test_wled_forms_publish_typed_parameters_and_reject_invalid_values(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        dashboard, _ = load_dashboard(root / "dashboard.example.yaml", root)
+        controls = dashboard_controls(dashboard)["lighting"]
+        expected = {
+            "color": {"segment": 2, "red": 255, "green": 80, "blue": 20},
+            "effect": {"segment": 2, "effect_id": 12},
+            "palette": {"segment": 2, "palette_id": 5},
+            "transition": {"duration": 10},
+            "preset": {"preset_id": 1},
+        }
+        with patch.object(main, "tab_controls", {"coach": controls}):
+            for action, params in expected.items():
+                action_id = f"wled_patio_{action}"
+                fields = controls[action_id]["input"]["fields"]
+                for submitted in (
+                    params, {field["param"]: field["min"] for field in fields},
+                    {field["param"]: field["max"] for field in fields},
+                ):
+                    result = await main.submit_control(self.viewer, action_id, False, submitted)
+                    self.assertEqual(result["status"], "completed")
+                    request = json.loads(self.broker.publish.await_args.args[1])
+                    self.assertEqual((request["target"], request["action"]), ("patio_light", action))
+                    self.assertEqual(request["params"], submitted)
+                self.broker.publish.reset_mock()
+                invalid_values = [None, 1, [], {}, {**params, "extra": 1}]
+                for field in fields:
+                    for invalid in (
+                        field["min"] - 1, field["max"] + 1, field["min"] + 0.5,
+                        True, "1", None, {}, float("nan"), float("inf"),
+                    ):
+                        invalid_values.append({**params, field["param"]: invalid})
+                for submitted in invalid_values:
+                    with self.subTest(action=action, submitted=submitted):
+                        result = await main.submit_control(self.viewer, action_id, False, submitted)
+                        self.assertEqual(result["code"], "invalid_params")
+                self.broker.publish.assert_not_awaited()
 
     async def test_slider_rejects_values_outside_range_or_off_step(self) -> None:
         self.control["input"] = {

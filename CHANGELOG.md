@@ -7,7 +7,14 @@ Changes below are unreleased; no release version or Git tag has been assigned.
 
 ### Added
 
-- Read-only WLED widget with compact brightness and segment color/effect summaries.
+- WLED widget with compact brightness and segment color/effect summaries,
+  explicit dashboard Coach entity binding, optional power actions, native
+  0–255 brightness, segment RGB color/effect/palette, transition duration, and
+  saved preset write-back through the existing correlated command flow.
+  Controls require fresh valid telemetry and share pending-state gating and
+  notifications; summaries remain telemetry-driven.
+- Validated WLED action forms that submit all configured numeric parameters
+  atomically, with exact field allow-listing and server-side range/step checks.
 - Shared, theme-aware bottom-right notifications with rounded bubble styling,
   independent five-second expiry, manual dismissal, accessible status/error
   announcements, and expandable Coach refresh entity details.

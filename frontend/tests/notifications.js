@@ -63,15 +63,30 @@ const config = {
       { type: 'generator', payload_path: 'generator', controls: [control('generator', 'start')] },
       { type: 'thermostat', payload_path: 'thermostat', controls: [control('thermostat', 'cool')] },
       { type: 'numeric', payload_path: 'number', controls: [control('generic', 'on')] },
+      { type: 'wled', label: 'Test strip', entity: 'strip', controls: [
+        control('wled', 'toggle'), control('wled_on', 'on'), control('wled_off', 'off'),
+        { ...control('wled_brightness', 'brightness'), label: 'Brightness',
+          input: { type: 'slider', param: 'bri', value_field: 'bri', min: 0, max: 255, step: 1 } },
+        ...Object.entries({
+          color: ['segment', 'red', 'green', 'blue'], effect: ['segment', 'effect_id'],
+          palette: ['segment', 'palette_id'], transition: ['duration'], preset: ['preset_id'],
+        }).map(([action, params]) => ({
+          ...control(`wled_${action}`, action), label: action,
+          input: { type: 'form', fields: params.map((param) => ({
+            param, label: param, min: param === 'preset_id' ? 1 : 0,
+            max: param === 'duration' ? 65535 : param === 'preset_id' ? 250 : 255, step: 1,
+          })) },
+        })),
+      ] },
     ].map((node) => ({ ...node, topic: 'test' })) },
   }],
 };
 
-function snapshot() {
+function snapshot(wled = { on: true, bri: 128, seg: [] }, ts = Date.now() / 1000) {
   socket.receive({ type: 'snapshot', tab: 'coach', values: [{
-    topic: 'test', ts: Date.now() / 1000, payload: {
+    topic: 'test', ts, payload: {
       light: false, fan: false, generator: { status: 'stopped' },
-      thermostat: { mode: 'off', ambient_c: 22 }, number: 1,
+      thermostat: { mode: 'off', ambient_c: 22 }, number: 1, ...wled,
     },
   }] });
 }
@@ -168,6 +183,8 @@ try {
   for (const [id, selector] of [
     ['light', '.light-status'], ['fan', '.fan-action'], ['generator', '.generator-action'],
     ['thermostat', '.thermostat-control-group button'], ['generic', '.control-actions button'],
+    ['wled', 'button.wled-status'], ['wled_on', '.wled-actions button:first-child'],
+    ['wled_off', '.wled-actions button:last-child'],
   ]) {
     fixture.querySelector(selector).click();
     await tick();
@@ -180,6 +197,89 @@ try {
       && !fixture.querySelector('main').textContent.includes('Configured action dispatched'),
     `${id} result uses notifications, not inline content`);
   }
+  const slider = fixture.querySelector('.wled-slider input');
+  for (const [action, params] of Object.entries({
+    color: { segment: 2, red: 255, green: 80, blue: 20 },
+    effect: { segment: 2, effect_id: 12 }, palette: { segment: 2, palette_id: 5 },
+    transition: { duration: 10 }, preset: { preset_id: 250 },
+  })) {
+    const form = fixture.querySelector(`form[aria-label="Test strip ${action}"]`);
+    const before = sent.length;
+    for (const [param, value] of Object.entries(params)) {
+      const input = form.querySelector(`[name="${param}"]`);
+      input.value = String(value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    await tick();
+    assert(sent.length === before, `Editing WLED ${action} parameters does not dispatch`);
+    form.querySelector('button').click();
+    await tick();
+    assert(sent.length === before + 1 && sent.at(-1).action_id === `wled_${action}`
+      && JSON.stringify(sent.at(-1).value) === JSON.stringify(params)
+      && form.querySelector('fieldset').disabled,
+    `WLED ${action} submits all typed parameters once and respects busy gating`);
+    socket.receive({ type: 'command_result', action_id: `wled_${action}`,
+      status: 'completed', message: `${action} dispatched` });
+    await tick();
+    assert(!form.querySelector('fieldset').disabled
+      && get(notifications).some((item) => item.message === `${action} dispatched`),
+    `WLED ${action} results use shared notifications`);
+  }
+  const presetForm = fixture.querySelector('form[aria-label="Test strip preset"]');
+  const presetInput = presetForm.querySelector('input');
+  for (const value of ['0', '251', '1.5', '']) {
+    presetInput.value = value;
+    presetInput.dispatchEvent(new Event('input', { bubbles: true }));
+    await tick();
+    const before = sent.length;
+    presetForm.querySelector('button').click();
+    assert(sent.length === before && !presetForm.checkValidity(),
+      `Invalid WLED preset input "${value}" is blocked by form validation`);
+  }
+  assert(slider.value === '128' && slider.max === '255' && slider.step === '1',
+    'WLED brightness uses native telemetry and an integer 0–255 range');
+  const beforeSlider = sent.length;
+  slider.value = '200';
+  slider.dispatchEvent(new Event('input', { bubbles: true }));
+  await tick();
+  assert(sent.length === beforeSlider, 'Dragging WLED brightness does not send commands');
+  slider.dispatchEvent(new Event('change', { bubbles: true }));
+  await tick();
+  assert(sent.length === beforeSlider + 1 && sent.at(-1).action_id === 'wled_brightness'
+    && sent.at(-1).value === 200 && slider.disabled,
+  'Releasing WLED brightness sends exactly one action and gates controls while busy');
+  assert(fixture.querySelector('.wled-brightness-label strong').textContent === '50%',
+    'WLED command dispatch does not optimistically change reported brightness');
+  clearNotifications();
+  socket.receive({ type: 'command_result', action_id: 'wled_brightness', status: 'failed',
+    message: 'WLED rejected' });
+  await tick();
+  assert(!slider.disabled && slider.value === '128'
+    && get(notifications).some((item) => item.message === 'WLED rejected'),
+  'Failed WLED commands restore telemetry-driven input and use shared notifications');
+  snapshot({ on: false, bri: 64, seg: [] });
+  await tick();
+  assert(slider.value === '64' && fixture.querySelector('button.wled-status').textContent === 'Off',
+    'WLED controls follow subsequent power and brightness telemetry');
+  for (const [name, payload, ts] of [
+    ['stale', { on: true, bri: 128 }, Date.now() / 1000 - 60],
+    ['invalid', { on: 'bad', bri: 128 }, Date.now() / 1000],
+    ['missing', {}, Date.now() / 1000],
+  ]) {
+    if (name === 'missing') socket.receive({ type: 'snapshot', tab: 'coach', values: [] });
+    else snapshot(payload, ts);
+    await tick();
+    assert([...fixture.querySelectorAll('.wled button, .wled input')].every((item) => item.matches(':disabled')),
+      `WLED controls are disabled with ${name} telemetry`);
+  }
+  snapshot();
+  socket.receive({ type: 'config', config: { ...config, command_controls_enabled: false } });
+  await tick();
+  assert([...fixture.querySelectorAll('.wled button, .wled input')].every((item) => item.matches(':disabled')),
+    'WLED controls respect the server write gate');
+  socket.receive({ type: 'config', config });
+  snapshot();
+  await tick();
   socket.receive({ type: 'command_result', action_id: 'light', status: 'failed', message: 'Command rejected' });
   socket.receive({ type: 'refresh_result', status: 'failed', message: 'Refresh timed out' });
   socket.receive({ type: 'error', message: '<script>Untrusted error</script>' });
@@ -193,10 +293,15 @@ try {
   fixture.querySelector('.light-status').click();
   socket.close();
   await tick();
+  assert([...fixture.querySelectorAll('.wled button, .wled input')].every((item) => item.matches(':disabled')),
+    'WLED controls are disabled after disconnect');
   assert(get(notifications).some((item) => item.message.includes('outcome is unknown')),
     'Disconnect during an action notifies the user of its unknown outcome');
-  await new Promise((resolve) => originalSetTimeout(resolve, 550));
-  await tick();
+  for (let attempt = 0; attempt < 30 && !button('Refreshing...'); attempt += 1) {
+    await new Promise((resolve) => originalSetTimeout(resolve, 100));
+    await tick();
+  }
+  assert(button('Refreshing...')?.disabled, 'Reconnect starts a new Coach refresh before disconnect testing');
   socket.close();
   await tick();
   assert(get(notifications).some((item) => item.message.includes('refresh finished')),

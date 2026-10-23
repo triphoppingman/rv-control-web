@@ -200,6 +200,26 @@ async def submit_control(
                 "This control does not accept a value.", "not_started",
             )
         params = control["params"]
+    elif control_input["type"] == "form":
+        fields = control_input["fields"]
+        if not isinstance(value, dict) or set(value) != {field["param"] for field in fields}:
+            return _control_result(
+                action_id, control, "rejected", "invalid_params",
+                "Submit exactly the configured action parameters.", "not_started",
+            )
+        for field in fields:
+            selected = value[field["param"]]
+            steps = (selected - field["min"]) / field["step"] if is_finite_number(selected) else None
+            if (
+                steps is None or not is_finite_number(steps)
+                or selected < field["min"] or selected > field["max"]
+                or not math.isclose(steps, round(steps))
+            ):
+                return _control_result(
+                    action_id, control, "rejected", "invalid_params",
+                    "An action parameter is outside its configured range or step.", "not_started",
+                )
+        params = {**control["params"], **value}
     else:
         minimum, maximum, step = (
             control_input["min"], control_input["max"], control_input["step"]

@@ -53,6 +53,17 @@ def is_finite_number(value: Any) -> bool:
         return False
 
 
+def valid_input_range(field: dict[str, Any]) -> bool:
+    minimum, maximum, step = (field.get(key) for key in ("min", "max", "step"))
+    if not all(is_finite_number(value) for value in (minimum, maximum, step)):
+        return False
+    if minimum >= maximum or step <= 0:
+        return False
+    span = maximum - minimum
+    steps = span / step
+    return is_finite_number(span) and is_finite_number(steps) and math.isclose(steps, round(steps))
+
+
 def load_dashboard(path: Path, assets_dir: Path) -> tuple[dict[str, Any], dict[str, set[str]]]:
     """Validate a display tree and return its configuration and tab topics."""
     data = yaml.load(path.read_text(), Loader=DashboardLoader)
@@ -97,6 +108,11 @@ def validate_node(
     kind = node.get("type")
     if not isinstance(kind, str) or kind not in CONTAINERS | BOUND | {"derived", "map"} | SPECIALIZED | STATIC:
         raise ValueError(f"{location}: unknown type {kind!r}")
+    entity = node.get("entity")
+    if "entity" in node and (
+        kind != "wled" or not isinstance(entity, str) or not IDENTIFIER.fullmatch(entity)
+    ):
+        raise ValueError(f"{location}: entity must be a Coach identifier on a WLED widget")
     if "refreshable" in node and (
         kind not in BOUND or not isinstance(node["refreshable"], bool)
     ):
@@ -115,9 +131,11 @@ def validate_node(
         topics.add(node["lid_topic"])
     controls = node.get("controls")
     if controls is not None:
-        if kind not in BOUND or not isinstance(controls, list) or not controls:
+        if kind not in BOUND | {"wled"} or not isinstance(controls, list) or not controls:
             raise ValueError(f"{location}: controls must be a non-empty list on a bound widget")
-        allowed_targets = {
+        if kind == "wled" and entity is None:
+            raise ValueError(f"{location}: WLED controls require an entity binding")
+        allowed_targets = {entity} if kind == "wled" else {
             topic[len(COACH_ENTITY_PREFIX):]
             for topic in (node.get("topic"),)
             if isinstance(topic, str) and topic.startswith(COACH_ENTITY_PREFIX)
@@ -148,7 +166,7 @@ def validate_node(
                 not isinstance(target, str) or not IDENTIFIER.fullmatch(target)
                 or target not in allowed_targets
             ):
-                raise ValueError(f"{control_location}: target must match this widget's Coach entity topic")
+                raise ValueError(f"{control_location}: target must match this widget's Coach entity binding or topic")
             action = control.get("action")
             if not isinstance(action, str) or not IDENTIFIER.fullmatch(action):
                 raise ValueError(f"{control_location}: action must match [A-Za-z0-9_-]{{1,64}}")
@@ -165,7 +183,28 @@ def validate_node(
             ):
                 raise ValueError(f"{control_location}: params must contain only finite scalar values")
             control_input = control.get("input")
-            if control_input is not None:
+            if isinstance(control_input, dict) and control_input.get("type") == "form":
+                fields = control_input.get("fields")
+                if (
+                    kind != "wled" or set(control_input) != {"type", "fields"}
+                    or not isinstance(fields, list) or not fields or len(fields) > 8
+                ):
+                    raise ValueError(f"{control_location}: form input requires 1-8 fields on a WLED widget")
+                seen_params = set(params)
+                for field in fields:
+                    if (
+                        not isinstance(field, dict)
+                        or set(field) - {"param", "label", "min", "max", "step"}
+                        or not isinstance(field.get("param"), str)
+                        or not IDENTIFIER.fullmatch(field["param"])
+                        or field["param"] in seen_params
+                        or not isinstance(field.get("label"), str)
+                        or not field["label"].strip() or len(field["label"]) > 64
+                        or not valid_input_range(field)
+                    ):
+                        raise ValueError(f"{control_location}: form fields require unique params, labels, and valid ranges")
+                    seen_params.add(field["param"])
+            elif control_input is not None:
                 required_input_fields = {"type", "param", "min", "max", "step"}
                 if (
                     not isinstance(control_input, dict)
@@ -189,19 +228,7 @@ def validate_node(
                             or len(control_input["unit"]) > 16
                         )
                     )
-                    or not is_finite_number(control_input.get("min"))
-                    or not is_finite_number(control_input.get("max"))
-                    or not is_finite_number(control_input.get("step"))
-                    or control_input["min"] >= control_input["max"]
-                    or control_input["step"] <= 0
-                    or not is_finite_number(control_input["max"] - control_input["min"])
-                    or not is_finite_number(
-                        (control_input["max"] - control_input["min"]) / control_input["step"]
-                    )
-                    or not math.isclose(
-                        (control_input["max"] - control_input["min"]) / control_input["step"],
-                        round((control_input["max"] - control_input["min"]) / control_input["step"]),
-                    )
+                    or not valid_input_range(control_input)
                 ):
                     raise ValueError(
                         f"{control_location}: input must define a valid slider param, min, max, and step"

@@ -44,8 +44,11 @@ The regression checks cover:
   cancellation, clearing, and application teardown.
 - Refresh busy state, collapsed/expandable entity details, and completed or
   failed refresh notifications without inline dashboard output.
-- Light, fan, generator, thermostat, and generic widget action dispatch,
+- Light, fan, generator, thermostat, WLED, and generic widget action dispatch,
   busy gating, and results without inline widget output.
+- WLED power actions, one brightness command on release, native 0–255 values,
+  telemetry-driven readings, and stale/missing/invalid/disconnected/write-disabled
+  gating; color, effect, palette, transition, and preset form submission and validation.
 - Failed command results, escaped server errors, interrupted actions and
   refreshes, login/logout errors, and clearing old messages on logout.
 
@@ -85,14 +88,17 @@ The example dashboard has:
 | Power | `rv/renogy` | State-of-charge gauge and trend, PV-to-battery voltage delta, PV voltage (0–150 V dial), PV current, PV power |
 | Shore Power | `rv/hughes` | Line-voltage gauge, current, power trend, error code, energy |
 | Coach | `rv/coach/entity/<entity>` | Fresh water, gray, black, black 2, and LPG tank levels |
-| Lighting | `rv/wled/patio` | Read-only WLED power, brightness, segment colors, effects, and palettes |
+| Lighting | `rv/wled/patio` | WLED power, brightness, color, effect, palette, transition, and preset controls |
 | OBD2 | `rv/obd` | RPM, speed, engine load, coolant and transmission temperatures, intake and ambient air, fuel, barometric pressure, voltage, gear, raw torque converter clutch |
 | Weather | `rv/weather` | Current conditions, seven-day forecast, daylight, and UV index from the Open-Meteo response |
 
 The WLED tab binds the complete `/json/state` object without `payload_path`.
 It shows master power, brightness as a percentage, and up to four segment color
 swatches with numeric effect and palette IDs. These IDs are not names; names
-are not included in the state payload. The widget is read-only.
+are not included in the state payload. The summaries reflect telemetry.
+Writes use configured Coach actions (see
+[WLED controls](#wled-controls)); command publishing remains disabled in the
+test configuration.
 
 The Weather tab uses the `weather` widget type. Its `provider` defaults to
 `open-meteo`, and its `bindings` map canonical weather fields to dotted paths
@@ -401,6 +407,93 @@ The default is `true`, preserving existing dial warning zones. For a voltage
 dial centered on 120 V at the top, use `min: 90` and `max: 150` (the midpoint
 of the symmetric needle sweep is 120). This changes the displayed scale only,
 not the telemetry value or protection settings.
+
+## WLED controls
+
+Bind a `wled` widget to raw device telemetry with `topic`, and to its Coach
+entity with `entity`. The identifiers are configured independently: no entity
+is inferred from the raw topic. Every control's `target` must match `entity`.
+Read-only widgets need neither an entity nor controls.
+
+```yaml
+type: wled
+label: Patio strip
+topic: rv/wled/patio
+entity: patio_light
+controls:
+  - {id: wled_patio_toggle, target: patio_light, action: toggle, label: Toggle}
+  - {id: wled_patio_on, target: patio_light, action: on, label: Turn on}
+  - {id: wled_patio_off, target: patio_light, action: off, label: Turn off}
+  - id: wled_patio_brightness
+    target: patio_light
+    action: brightness
+    label: Brightness
+    input: {type: slider, param: bri, value_field: bri, min: 0, max: 255, step: 1}
+```
+
+Replace `patio_light` with the entity defined by your Coach installation.
+RV-Control must load that entity and grant the configured controller its
+actions. Follow [command publishing setup](#enable-command-publishing) for the
+remaining write gates. This does not enable direct WLED HTTP or raw MQTT writes.
+
+Click the power indicator to toggle; explicit On/Off buttons are also available.
+The brightness slider sends one integer `bri` value when released (including
+keyboard changes); the overview still displays a normalized percentage.
+Pending actions, refresh operations, disconnects, disabled commands, and
+missing/stale/invalid telemetry disable controls. Brightness also requires a
+reported `bri` field. Results use shared notifications and confirm dispatch,
+not physical state. Reported power and brightness only change with telemetry;
+after a slider submission its position returns to the reported value until
+new telemetry arrives.
+
+The shipped dashboard also exposes **Color**, **Effect**, **Palette**,
+**Transition**, and **Preset** forms. Edit the requested values and press the
+corresponding **Apply** button to send one atomic Coach action:
+
+| Action | Parameters (all integers) |
+| --- | --- |
+| `color` | `segment`, `red`, `green`, `blue`: 0–255 |
+| `effect` | `segment`, `effect_id`: 0–255 |
+| `palette` | `segment`, `palette_id`: 0–255 |
+| `transition` | `duration`: 0–65535, in 100 ms units (10 = one second) |
+| `preset` | `preset_id`: 1–250, applies an existing saved preset |
+
+These advanced actions must be declared in the installation's Coach action
+schemas and explicitly granted by its controller policy; the base WLED template
+may only provide power and brightness. Toggle also requires an action declared
+by the installation. Device firmware determines which segment/effect/palette
+IDs and saved presets actually exist; numeric bounds do not establish availability.
+Use the numeric IDs from your controller, not guessed catalog names.
+Color/effect/palette actions address a segment explicitly; they do not turn
+output on, enable a segment, or change brightness. Color does not force a Solid
+effect. Presets may change multiple settings, including power.
+
+Forms use dashboard-configured numeric fields, for example:
+
+```yaml
+- id: wled_patio_palette
+  target: patio_light
+  action: palette
+  label: Palette
+  input:
+    type: form
+    fields:
+      - {param: segment, label: Segment ID, min: 0, max: 255, step: 1}
+      - {param: palette_id, label: Palette ID, min: 0, max: 255, step: 1}
+```
+
+Form inputs are editable requests, not live state indicators: they start at
+their configured minima and retain edits after submission. Live summaries
+remain telemetry-driven. Empty, out-of-range, and off-step values are rejected.
+The backend requires exactly the configured field names, validates every numeric
+range/step, and merges them with any fixed `params`. A form cannot override fixed
+parameters. Forms are supported on WLED widgets only. Arbitrary JSON state,
+direct device access, preset saving/deletion, and catalog discovery are not
+exposed.
+
+The browser regression page described under [Notifications](#notifications)
+uses mocked HTTP/WebSocket responses for these checks; never point action
+regression tests at a real Coach controller.
 
 ## Coach light controls
 
